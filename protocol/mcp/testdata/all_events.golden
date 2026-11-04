@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"plan started","progress":1,"progressToken":"p1"}}
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"Hello, ","progress":2,"progressToken":"p1"}}
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"world.","progress":3,"progressToken":"p1"}}
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"calling search","progress":4,"progressToken":"p1"}}
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"Found it.","progress":5,"progressToken":"p1"}}
+{"jsonrpc":"2.0","method":"notifications/progress","params":{"message":"plan finished","progress":6,"progressToken":"p1"}}
+{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"rosetta","version":"dev"}},"content":[{"type":"text","text":"Hello, world.Found it."},{"type":"text","text":"summary"}],"resultType":"complete","structuredContent":{"report":{"score":9}}}
