@@ -1,0 +1,66 @@
+id: RUN_STARTED_1793750400000
+data: {"type":"RUN_STARTED","timestamp":1793750400000,"threadId":"t1","runId":"r1"}
+
+id: STEP_STARTED_1793750400000
+data: {"type":"STEP_STARTED","timestamp":1793750400000,"stepName":"plan"}
+
+id: REASONING_START_1793750400000
+data: {"type":"REASONING_START","timestamp":1793750400000,"messageId":"r1-reasoning-1"}
+
+id: REASONING_MESSAGE_START_1793750400000
+data: {"type":"REASONING_MESSAGE_START","timestamp":1793750400000,"messageId":"r1-reasoning-1","role":"reasoning"}
+
+id: REASONING_MESSAGE_CONTENT_1793750400000
+data: {"type":"REASONING_MESSAGE_CONTENT","timestamp":1793750400000,"messageId":"r1-reasoning-1","delta":"thinking"}
+
+id: REASONING_MESSAGE_END_1793750400000
+data: {"type":"REASONING_MESSAGE_END","timestamp":1793750400000,"messageId":"r1-reasoning-1"}
+
+id: REASONING_END_1793750400000
+data: {"type":"REASONING_END","timestamp":1793750400000,"messageId":"r1-reasoning-1"}
+
+id: TEXT_MESSAGE_START_1793750400000
+data: {"type":"TEXT_MESSAGE_START","timestamp":1793750400000,"messageId":"id-1","role":"assistant"}
+
+id: TEXT_MESSAGE_CONTENT_1793750400000
+data: {"type":"TEXT_MESSAGE_CONTENT","timestamp":1793750400000,"messageId":"id-1","delta":"Hello, "}
+
+id: TEXT_MESSAGE_CONTENT_1793750400000
+data: {"type":"TEXT_MESSAGE_CONTENT","timestamp":1793750400000,"messageId":"id-1","delta":"world."}
+
+id: TEXT_MESSAGE_END_1793750400000
+data: {"type":"TEXT_MESSAGE_END","timestamp":1793750400000,"messageId":"id-1"}
+
+id: TOOL_CALL_START_1793750400000
+data: {"type":"TOOL_CALL_START","timestamp":1793750400000,"toolCallId":"call-1","toolCallName":"search"}
+
+id: TOOL_CALL_ARGS_1793750400000
+data: {"type":"TOOL_CALL_ARGS","timestamp":1793750400000,"toolCallId":"call-1","delta":"{\"q\":\"rosetta\"}"}
+
+id: TOOL_CALL_END_1793750400000
+data: {"type":"TOOL_CALL_END","timestamp":1793750400000,"toolCallId":"call-1"}
+
+id: TOOL_CALL_RESULT_1793750400000
+data: {"type":"TOOL_CALL_RESULT","timestamp":1793750400000,"messageId":"call-1-result","toolCallId":"call-1","content":"{\"hits\":1}","role":"tool"}
+
+id: TEXT_MESSAGE_START_1793750400000
+data: {"type":"TEXT_MESSAGE_START","timestamp":1793750400000,"messageId":"id-2","role":"assistant"}
+
+id: TEXT_MESSAGE_CONTENT_1793750400000
+data: {"type":"TEXT_MESSAGE_CONTENT","timestamp":1793750400000,"messageId":"id-2","delta":"Found it."}
+
+id: TEXT_MESSAGE_END_1793750400000
+data: {"type":"TEXT_MESSAGE_END","timestamp":1793750400000,"messageId":"id-2"}
+
+id: STATE_SNAPSHOT_1793750400000
+data: {"type":"STATE_SNAPSHOT","timestamp":1793750400000,"snapshot":{"step":2}}
+
+id: CUSTOM_1793750400000
+data: {"type":"CUSTOM","timestamp":1793750400000,"name":"artifact","value":{"name":"report","parts":[{"text":"summary"},{"data":{"score":9}}]}}
+
+id: STEP_FINISHED_1793750400000
+data: {"type":"STEP_FINISHED","timestamp":1793750400000,"stepName":"plan"}
+
+id: RUN_FINISHED_1793750400000
+data: {"type":"RUN_FINISHED","timestamp":1793750400000,"threadId":"t1","runId":"r1"}
+

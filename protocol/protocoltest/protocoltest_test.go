@@ -44,3 +44,19 @@ func TestStaticRegistry(t *testing.T) {
 		t.Error("registry lookup failed")
 	}
 }
+
+func TestNewRunnerUsesCountingIDs(t *testing.T) {
+	var got []rosetta.Event
+	a := ScriptedAgent("s", rosetta.TextDelta{Text: "x"})
+	req := &rosetta.Request{}
+	err := NewRunner().Run(context.Background(), a, req, func(e rosetta.Event) error {
+		got = append(got, e)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.RunID != "id-1" || got[0].(rosetta.TextDelta).MessageID != "id-2" {
+		t.Errorf("run %q, message %q", req.RunID, got[0].(rosetta.TextDelta).MessageID)
+	}
+}

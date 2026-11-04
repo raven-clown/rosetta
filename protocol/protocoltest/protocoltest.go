@@ -4,10 +4,17 @@ package protocoltest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"sync/atomic"
+	"time"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/run"
 	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/registry"
+	"github.com/raven-clown/rosetta/session"
 )
 
 // ScriptedAgent returns an agent that sends events in order and returns nil.
@@ -49,4 +56,13 @@ func StaticRegistry(agents ...rosetta.Agent) protocol.Registry {
 		panic(err)
 	}
 	return r
+}
+
+// NewRunner returns a runner with an in-memory store, a silent logger and
+// IDs counting up from id-1, so wire output is stable.
+func NewRunner() protocol.Runner {
+	var n atomic.Int64
+	ids := func() string { return fmt.Sprintf("id-%d", n.Add(1)) }
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return run.New(session.NewMemory(time.Hour, nil), run.WithIDs(ids), run.WithLogger(logger))
 }
