@@ -1,0 +1,8 @@
+{"sessionId":"SESSION","update":{"content":{"text":"thinking","type":"text"},"sessionUpdate":"agent_thought_chunk"}}
+{"sessionId":"SESSION","update":{"content":{"text":"Hello, ","type":"text"},"sessionUpdate":"agent_message_chunk"}}
+{"sessionId":"SESSION","update":{"content":{"text":"world.","type":"text"},"sessionUpdate":"agent_message_chunk"}}
+{"sessionId":"SESSION","update":{"kind":"other","rawInput":{"q":"rosetta"},"sessionUpdate":"tool_call","status":"in_progress","title":"search","toolCallId":"call-1"}}
+{"sessionId":"SESSION","update":{"rawOutput":{"hits":1},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"call-1"}}
+{"sessionId":"SESSION","update":{"content":{"text":"Found it.","type":"text"},"sessionUpdate":"agent_message_chunk"}}
+{"sessionId":"SESSION","update":{"content":{"text":"summary","type":"text"},"sessionUpdate":"agent_message_chunk"}}
+{"sessionId":"SESSION","update":{"content":{"text":"{\"score\":9}","type":"text"},"sessionUpdate":"agent_message_chunk"}}

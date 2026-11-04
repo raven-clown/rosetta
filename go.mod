@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/a2aproject/a2a-go/v2 v2.7.0
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20261104050642-08eae9dc1354
+	github.com/coder/acp-go-sdk v0.13.5
 	github.com/mark3labs/mcp-go v1.5.0
 	github.com/sirupsen/logrus v1.9.3
 )
