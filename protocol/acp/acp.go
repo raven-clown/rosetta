@@ -45,10 +45,10 @@ func (a *Adapter) ServeStdio(ctx context.Context, agents protocol.Registry, run 
 	if len(list) == 0 {
 		return errors.New("acp: no agent to serve")
 	}
-	impl := &agent{agent: list[0], run: run, sessions: map[acpsdk.SessionId]*session{}}
+	impl := newAgent(list[0], run)
 	conn := acpsdk.NewAgentSideConnection(impl, out, in)
 	conn.SetLogger(a.logger)
-	impl.conn = conn
+	impl.connect(conn)
 	select {
 	case <-ctx.Done():
 	case <-conn.Done():
@@ -63,7 +63,8 @@ type session struct {
 type agent struct {
 	agent    rosetta.Agent
 	run      protocol.Runner
-	conn     *acpsdk.AgentSideConnection
+	conn     updater
+	ready    chan struct{}
 	mu       sync.Mutex
 	sessions map[acpsdk.SessionId]*session
 }
@@ -132,7 +133,7 @@ func (x *agent) Prompt(ctx context.Context, p acpsdk.PromptRequest) (acpsdk.Prom
 	}
 	err := x.run.Run(runCtx, x.agent, req, func(e rosetta.Event) error {
 		for _, u := range updates(e) {
-			if err := x.conn.SessionUpdate(runCtx, acpsdk.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+			if err := x.update(runCtx, acpsdk.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
 				return err
 			}
 		}
@@ -170,4 +171,29 @@ func (x *agent) SetSessionConfigOption(context.Context, acpsdk.SetSessionConfigO
 
 func (x *agent) SetSessionMode(context.Context, acpsdk.SetSessionModeRequest) (acpsdk.SetSessionModeResponse, error) {
 	return acpsdk.SetSessionModeResponse{}, acpsdk.NewMethodNotFound("session/set_mode")
+}
+
+type updater interface {
+	SessionUpdate(ctx context.Context, n acpsdk.SessionNotification) error
+}
+
+func newAgent(a rosetta.Agent, run protocol.Runner) *agent {
+	return &agent{agent: a, run: run, sessions: map[acpsdk.SessionId]*session{}, ready: make(chan struct{})}
+}
+
+// connect publishes the connection. The SDK starts reading before its
+// constructor returns, so handlers wait on ready instead of reading conn
+// directly.
+func (x *agent) connect(u updater) {
+	x.conn = u
+	close(x.ready)
+}
+
+func (x *agent) update(ctx context.Context, n acpsdk.SessionNotification) error {
+	select {
+	case <-x.ready:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return x.conn.SessionUpdate(ctx, n)
 }

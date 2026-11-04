@@ -218,3 +218,27 @@ func TestEmptyRegistry(t *testing.T) {
 		t.Error("want an error with no agents")
 	}
 }
+
+func TestPromptWaitsForConnection(t *testing.T) {
+	started := make(chan struct{})
+	a := rosetta.Func(rosetta.Card{Name: "a"}, func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
+		close(started)
+		return out.Text("hi")
+	})
+	x := newAgent(a, protocoltest.NewRunner())
+	x.sessions["s1"] = &session{}
+	done := make(chan error, 1)
+	go func() {
+		_, err := x.Prompt(t.Context(), acpsdk.PromptRequest{SessionId: "s1", Prompt: []acpsdk.ContentBlock{acpsdk.TextBlock("x")}})
+		done <- err
+	}()
+	<-started
+	rec := &recorder{}
+	x.connect(rec)
+	if err := <-done; err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if got := rec.all(); len(got) != 1 || got[0].Update.AgentMessageChunk == nil {
+		t.Errorf("updates = %+v", got)
+	}
+}
