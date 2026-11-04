@@ -190,13 +190,14 @@ func TestCancelReturnsCanceled(t *testing.T) {
 
 func TestSinkErrorStops(t *testing.T) {
 	errGone := errors.New("client gone")
-	var sendErr error
+	sent := make(chan error, 1)
 	a := agentFunc(func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
-		sendErr = out.Text("a")
-		return sendErr
+		err := out.Text("a")
+		sent <- err
+		return err
 	})
 	err := newRunner(nil).Run(context.Background(), a, &rosetta.Request{}, func(rosetta.Event) error { return errGone })
-	if !errors.Is(err, errGone) || !errors.Is(sendErr, errGone) {
+	if sendErr := <-sent; !errors.Is(err, errGone) || !errors.Is(sendErr, errGone) {
 		t.Errorf("err = %v, sendErr = %v", err, sendErr)
 	}
 }
