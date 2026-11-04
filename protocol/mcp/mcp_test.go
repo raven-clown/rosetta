@@ -190,7 +190,10 @@ func TestStdio(t *testing.T) {
 	cancel()
 	_ = inW.Close()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Errorf("ServeStdio: %v", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("ServeStdio did not return")
 	}
