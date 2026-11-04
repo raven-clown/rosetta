@@ -32,7 +32,7 @@ No Go code yet. The spec in `docs/design.md` is under review. The planned packag
 | `registry/` | live agent list from code, config and the database |
 | `store/`, `store/migrations/` | store interface, in-memory and SQL stores, embedded migrations per dialect |
 | `admin/`, `api/admin/openapi.yaml` | `/admin/v1` handlers and their OpenAPI description |
-| `agents/llm/`, `agents/echo/` | built-in agent kinds |
+| `agents/llm/`, `agents/echo/`, `agents/a2a/` | built-in agent kinds, including a remote A2A agent |
 | `llm/openai/` | OpenAI-compatible chat client used to reach `transponder` |
 | `tools/mcp/` | tool source backed by an MCP server such as `airlock` |
 | `config/` | YAML and `ROSETTA_*` environment overrides |

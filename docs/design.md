@@ -1,6 +1,6 @@
 # rosetta design
 
-Status: draft for review
+Status: approved, in development
 Module: `github.com/raven-clown/rosetta`
 Contract: follows `mothership/CONTRACT.md`
 
@@ -86,7 +86,7 @@ Reasons:
 
 Per protocol:
 
-- **MCP: `mark3labs/mcp-go`.** Both SDKs are complete. mcp-go wins because it is the one the maintainer knows inside out, it has the larger user base, and rosetta also needs an MCP client for `airlock` (one SDK for both directions). Switching to the official SDK later is a change inside `protocol/mcp` and `tools/mcp` only.
+- **MCP: `mark3labs/mcp-go`.** Both SDKs are complete. The contract settles on mcp-go for all four projects, so they share one MCP library. It also suits rosetta on its own merits: it is the one the maintainer knows inside out, it has the larger user base, and rosetta also needs an MCP client for `airlock` (one SDK for both directions). Switching to the official SDK later is a change inside `protocol/mcp` and `tools/mcp` only.
 - **A2A: `a2aproject/a2a-go/v2`.** Official, on spec 1.0, and its executor already streams with iterators.
 - **ACP: `coder/acp-go-sdk`.** Generated from the schema, zero dependencies, used by real editors.
 - **AG-UI: the community SDK's `core/types`, `core/events` and `encoding/sse` packages, pinned to one pseudo-version.** rosetta writes its own small HTTP handler around them. If that SDK stalls or its dependencies grow, AG-UI events are flat JSON objects, and replacing the imported types with local structs is a one-package change. The golden tests in section 13 make that swap safe.
@@ -185,7 +185,7 @@ type ToolResult     struct{ ID string; Result json.RawMessage; IsError bool }
 type Step           struct{ Name string; Finished bool }
 type StateSnapshot  struct{ State json.RawMessage }
 type Artifact       struct{ Name string; Parts []Part }
-type Usage          struct{ InputTokens, OutputTokens int64; CostUSD float64 }
+type Usage          struct{ InputTokens, OutputTokens int64 }
 type Extension      struct{ Protocol string; Value any }
 ```
 
@@ -243,11 +243,11 @@ Because the MCP endpoint is an ordinary Streamable HTTP server, `airlock` can li
 Only one protocol can own stdin and stdout, so stdio is a separate mode:
 
 ```
-rosetta stdio --protocol acp --agent helper
-rosetta stdio --protocol mcp
+rosetta stdio --protocol acp --agent helper --config rosetta.yaml
+rosetta stdio --protocol mcp --config rosetta.yaml
 ```
 
-Editors launch this command as a child process. It reads the same config and the same database as `rosetta serve`, so agents created in the console are usable from an editor. In stdio mode logs go to stderr, since stdout carries the protocol. The contract says logs are JSON on stdout, so this needs a one-line note in the contract (see section 16).
+Editors launch this command as a child process. It reads the same config and the same database as `rosetta serve`, so agents created in the console are usable from an editor. In stdio mode logs go to stderr, as the contract says, since stdout carries the protocol.
 
 ### Library use
 
@@ -277,6 +277,7 @@ admin/                   /admin/v1 handlers
 api/admin/openapi.yaml   OpenAPI 3.1 description of the admin API
 agents/llm/              config-declared agent: tool-calling loop over an OpenAI-compatible API
 agents/echo/             echo agent for demos and end-to-end tests
+agents/a2a/              remote A2A agent served over the other protocols (a2aclient)
 llm/openai/              small OpenAI-compatible chat completions client with streaming and tools
 tools/mcp/               tool source backed by an MCP server (airlock or any other)
 config/                  YAML loading and ROSETTA_* environment overrides
@@ -328,7 +329,7 @@ storage:
 
 auth:
   api_keys:
-    - { name: ci, key: "${ROSETTA_CI_KEY}", role: user }
+    - { name: ci, key: "${ROSETTA_CI_KEY}", role: member }
 
 transponder:
   url: http://transponder:8080/v1
@@ -358,13 +359,13 @@ agents:
     kind: echo
 ```
 
-Any key can be overridden by environment: `ROSETTA_LISTEN_ADDR`, `ROSETTA_STORAGE_DSN`, `ROSETTA_TRANSPONDER_URL`, and so on (nested keys joined with `_`).
+Any key can be overridden by environment, with `__` between nested keys: `ROSETTA_LISTEN_ADDR`, `ROSETTA_STORAGE__DSN`, `ROSETTA_TRANSPONDER__URL`, and so on.
 
 ### Where a setting comes from
 
 Every agent and every setting has a source: `code` (registered in Go), `config` (YAML or environment), or `api` (created through the admin API and stored in the database).
 
-- Config wins. A value set in YAML or environment is shown in the admin API with `source: config` and cannot be changed there. Teams that keep config in git stay in control.
+- Config wins. A value set in YAML or environment is read-only in the admin API and marked `managed_by_file`, as the contract requires. Agents registered in Go are marked `managed_by_code`. Teams that keep config in git stay in control.
 - Everything else is editable through the admin API and stored in the database.
 - Agent names are unique across all sources. Creating an API agent with the name of a config agent fails with a conflict.
 - Settings editable at runtime: `transponder` and `airlock` URL and key, `default_agent`, `sessions.ttl`, and whether each protocol is enabled. `listen_addr`, `storage` and protocol paths need a restart and are config only.
@@ -390,22 +391,30 @@ Per the contract:
 - The caller's `Authorization` header is forwarded unchanged to `airlock` and `transponder`. When there is no caller token (stdio mode), the configured `api_key` for that upstream is used.
 - `traceparent` and `tracestate` are forwarded on every outbound call.
 - `X-Request-ID` is kept from the inbound request, or generated, and sent upstream.
-- `X-Usage-*` headers from transponder become a `Usage` event, which the runner stores on the run record and adds to metrics.
+- `X-Project` is forwarded unchanged when the caller sends it, so logbook scopes memories to the right project.
+- transponder streams usage as HTTP trailers (`X-Usage-Input-Tokens`, `X-Usage-Output-Tokens`). The client reads them after the stream ends, falls back to the stream's own usage chunk, and turns the counts into a `Usage` event, which the runner stores on the run record and adds to metrics. Money is not tracked in rosetta. Per the contract, cost is shown from transponder's records.
 
 ### Inbound auth in v0.1
 
 - HTTP auth is on by default. Callers send `Authorization: Bearer <key>`.
-- Keys come from config, or are created through the admin API. Each key has a role: `admin` (protocol endpoints and the admin API) or `user` (protocol endpoints only).
+- Keys come from config, or are created through the admin API. Each key has one of the contract's roles:
+
+| Role | Protocol endpoints (run agents) | Admin API reads | Admin API writes |
+|---|---|---|---|
+| `admin` | yes | yes | everything, including keys and settings |
+| `member` | yes | yes | agents and sessions |
+| `viewer` | no | yes | no |
+
 - `auth.disabled: true` turns auth off for local hacking. The admin API then only answers requests from loopback addresses.
 - stdio has no auth, as the editor that spawned the process is the trust boundary.
-- OIDC JWT checking arrives in v0.2, with a configurable claim that maps users to the `admin` role.
+- OIDC JWT checking arrives in v0.2, with a configurable claim that maps users to roles.
 
 ## 10. Storage
 
 Per the contract, state that must survive a restart lives in SQL.
 
 - **Drivers:** embedded SQLite through `modernc.org/sqlite` by default, Postgres through `pgx` (its `database/sql` driver) for teams and for several replicas. Both are pure Go, so builds need no cgo.
-- **DSN:** `storage.dsn`, either `sqlite://<path>` or `postgres://...`. The default is `rosetta.db` under the user config directory (`os.UserConfigDir()/rosetta`), so `rosetta serve` and the `rosetta stdio` processes an editor spawns share one file. The Docker image sets it to `/data/rosetta.db`.
+- **DSN:** `storage.dsn`, either `sqlite://<path>` or `postgres://...`. Per the contract, the default with no config is `rosetta.db` in the working directory. Editors start `rosetta stdio` from wherever they like, so the editor snippets from the admin API (section 11) always pass `--config` or `ROSETTA_STORAGE__DSN`, which makes the server and its stdio children share one file. The Docker image sets it to `/data/rosetta.db`.
 - **Migrations:** plain SQL files embedded in the binary, one folder per dialect, applied in order at startup and recorded in `schema_migrations`. On Postgres a migration run holds an advisory lock, so replicas starting together do not race. `rosetta migrate` runs them without starting the server, for teams that migrate as a separate deploy step. A database that is newer than the binary stops startup with a clear message.
 - **SQLite settings:** WAL mode and a busy timeout, so several processes (one server and a few stdio children) can share the file.
 - **Queries:** hand-written SQL over `database/sql` with a small helper for the placeholder difference between the two dialects. No ORM.
@@ -419,12 +428,14 @@ Per the contract, state that must survive a restart lives in SQL.
 | `api_keys` | name, role, key prefix, SHA-256 hash of the key, created, last used, revoked |
 | `sessions`, `messages` | conversation history per agent and session ID, with an expiry time |
 | `a2a_tasks` | A2A task state with a version number, behind a2a-go's `taskstore.Store` (four methods) |
-| `runs` | one row per run: agent, protocol, session, caller, status, error, start and end time, tokens, cost, request ID |
+| `runs` | one row per run: agent, protocol, session, caller, status, error, start and end time, token counts, request ID |
 | `audit` | every change made through the admin API: when, who, action, target, details |
 | `revision` | one counter, bumped on every change to agents or settings |
 
 Notes:
 
+- Every table above except `revision` has an `org_id` column, `default` until organisations ship, and every query filters by it, as the contract requires. Multi-tenancy then needs no data migration.
+- Every row the admin API can change has an integer `version`, bumped on each write.
 - Upstream API keys stored through the admin API are encrypted with AES-GCM using `storage.secret_key`. If no secret key is configured, the admin API refuses to store secrets, and they must come from config or environment. Secrets are never returned by the API, only `"set": true`.
 - Inbound API keys are stored only as hashes. The full key is shown once, when it is created.
 - Expired sessions and runs older than `runs.retention` (default 30 days) are deleted by a background job.
@@ -440,12 +451,12 @@ Per the contract: JSON under `/admin/v1/`, described by `api/admin/openapi.yaml`
 | Method and path | What |
 |---|---|
 | `GET /admin/v1/status` | version, uptime, storage dialect, enabled protocols, health of each upstream |
-| `GET /admin/v1/config` | effective config, every field with its source, secrets shown as set or not set |
+| `GET /admin/v1/config` | effective config, every field marked `managed_by_file` when it comes from YAML or environment, secrets shown as set or not set |
 | `PATCH /admin/v1/settings` | change runtime-editable settings |
 | `GET /admin/v1/agents` | list agents from all sources |
 | `POST /admin/v1/agents` | create an agent |
-| `GET /admin/v1/agents/{name}` | one agent, with its source and whether it is editable |
-| `PUT /admin/v1/agents/{name}` | replace an API agent |
+| `GET /admin/v1/agents/{name}` | one agent, with its `version` and `managed_by_file` or `managed_by_code` when it is read-only |
+| `PATCH /admin/v1/agents/{name}` | change an API agent |
 | `DELETE /admin/v1/agents/{name}` | delete an API agent |
 | `GET /admin/v1/agents/{name}/endpoints` | ready-to-paste connection details: MCP URL, A2A card URL, AG-UI URL, and the ACP command line for an editor |
 | `GET /admin/v1/tools` | tools available from airlock, for picking a tool allowlist |
@@ -457,22 +468,22 @@ Per the contract: JSON under `/admin/v1/`, described by `api/admin/openapi.yaml`
 | `GET /admin/v1/sessions` | sessions, filtered by agent |
 | `GET /admin/v1/sessions/{id}` | one session with its messages |
 | `DELETE /admin/v1/sessions/{id}` | delete a session |
-| `GET /admin/v1/usage` | tokens, cost and run counts, grouped by agent, protocol or day over a time range |
+| `GET /admin/v1/usage` | run counts, durations and token counts, grouped by agent, protocol or day over a time range. Cost comes from transponder |
 | `GET /admin/v1/audit` | audit records |
 
 The `endpoints` call exists so the console can turn "connect this agent to Zed" or "add it to Claude Desktop" into one copy button.
 
 ### Conventions
 
-- **Auth:** the `admin` role is required for every admin call.
-- **Lists:** `cursor` and `limit` in (default 50, max 200), `items` and `next_cursor` out. An empty `next_cursor` means the end. Cursors are opaque, encoding the sort key and ID, so lists stay stable while rows are added.
+- **Auth:** reads need any role. Writes need the role in section 9.
+- **Lists:** `cursor` and `limit` in (default 50, at most 500), `{"items": [...], "next_cursor": "..."}` out. `next_cursor` is absent on the last page. Cursors are opaque, encoding the sort key and ID, so lists stay stable while rows are added.
 - **Errors:** `{"error": {"code": "conflict", "message": "...", "field": "name"}}` with a matching HTTP status. `field` is set on validation errors so a form can point at the right input.
-- **Concurrent edits:** `GET` on an agent returns an `ETag`. `PUT` and `DELETE` accept `If-Match` and answer `412` when the agent changed in the meantime, so two console tabs cannot silently overwrite each other.
+- **Concurrent edits:** every resource carries an integer `version`. `PATCH` and `DELETE` take it in `If-Match`, and a mismatch answers 409 `version_conflict`, so two console tabs cannot silently overwrite each other.
 - **Audit:** every write is recorded in `audit` with the caller's identity (key name now, OIDC subject in v0.2).
 
 ### First run without YAML
 
-When the `api_keys` table is empty and config defines no keys, rosetta creates one `admin` key on first start, stores its hash, and prints the key once to the log. `ROSETTA_BOOTSTRAP_ADMIN_KEY` sets that first key instead, for Docker and CI. A new user pastes it into the console, sets the transponder URL, creates an agent, and copies a connection snippet, all without touching a file.
+When the `api_keys` table is empty and config defines no keys, rosetta creates one `admin` key on first start, stores its hash, and prints the key once to stderr. `ROSETTA_BOOTSTRAP_ADMIN_KEY` sets that first key instead, for Docker and CI. A new user pastes it into the console, sets the transponder URL, creates an agent, and copies a connection snippet, all without touching a file.
 
 ### Keeping the OpenAPI file honest
 
@@ -514,26 +525,39 @@ Test-driven throughout. The shared CI from `mothership/contributing` runs tests 
 The plan builds this in four milestones, and the first two already make a demo:
 
 1. Core types, runner, in-memory store, the four adapters, the echo agent, `server` and the `stdio` command.
-2. The llm agent, the OpenAI-compatible client, the MCP tool source, config, auth with config keys, operations endpoints.
+2. The llm agent, the OpenAI-compatible client, the MCP tool source, the `kind: a2a` remote agent, config, auth with config keys, operations endpoints.
 3. SQL storage: SQLite and Postgres, migrations, sessions, runs, A2A tasks, API agents, settings.
 4. Admin API, OpenAPI file, bootstrap key, audit, usage.
 
-Also in v0.1:
+### `kind: a2a` in v0.1
+
+The literal bridge is in the first release, because it makes the demo much stronger: point rosetta at any A2A agent, and that agent is usable from Zed over ACP, from Claude Desktop over MCP, and from a web page over AG-UI, with no code.
+
+```yaml
+agents:
+  - name: travel
+    kind: a2a
+    url: https://agents.example.com/travel
+```
+
+The agent reads the remote card for its name, description and skills, sends each run with `a2aclient` (streaming when the remote card says it can), and maps A2A events back to rosetta events: artifact updates become `TextDelta` or `Artifact`, `working` status messages become `Step`, and a failed task becomes an error. The caller's token is forwarded only when the agent sets `forward_token: true`, following the contract's rule that tokens are not passed to third parties by default. `mcp` and `acp` remote kinds come later.
+
+### Also in v0.1
 
 - `examples/`: a library example, a sample config, and a demo script for each protocol.
 - README with the five-minute demo and the "everything is free" note, `docs/protocols.md`, and the shared contributing files (already in the repository), with a section in `CONTRIBUTING.md` that points contributors at `protocol/`.
-- Milestone 1 written up as issues in `docs/issues.md` (format from `contributing/labels.md`, with a few `good first issue` items and `adapter` items per protocol) once this spec is approved, for review before they are posted.
+- Milestone 1 written up as issues in `docs/issues.md` (format from `contributing/labels.md`, with a few `good first issue` items and `adapter` items per protocol) and posted to GitHub.
 - Dockerfile and release builds for Linux, macOS and Windows.
 
-Out of v0.1 (next, in rough order):
+### Out of v0.1 (next, in rough order)
 
 - OIDC JWT checking and OTLP trace export, both required by the contract before the mothership end-to-end test.
-- Remote agents as a source: `kind: a2a` (and later `mcp` and `acp`) that wraps a remote agent and serves it over the other protocols. This is the "bridge" in the literal sense, so Zed can talk to any A2A agent over ACP.
+- Remote `mcp` and `acp` agent kinds.
 - Input-required flows: A2A `input-required`, MCP elicitation, ACP permission requests.
 - File and image parts.
 - MCP tasks for long runs. AG-UI frontend tools. MCP servers passed by ACP clients in `session/new` exposed to the agent as tools.
-- Per-agent access rules (which keys or users may call which agent), and multi-tenancy.
-- A2A gRPC binding and push notifications.
+- Per-agent access rules (which keys or users may call which agent), and organisations on top of the `org_id` columns.
+- A2A gRPC binding, push notifications and signed agent cards.
 - Framework bridges in `contrib/` (adk-go, eino, trpc-agent-go) as separate modules.
 
 ## 15. Dependencies
@@ -553,30 +577,30 @@ Test only: an OpenAPI loader and validator for the admin API tests.
 
 Everything else is the standard library (`log/slog`, `net/http`, `database/sql`, `crypto`, `iter`).
 
-## 16. Decisions taken and open choices
+## 16. Decisions
 
-### Decisions made in this spec
+Settled in the shared contract:
+
+- mcp-go for all MCP code.
+- Logs go to stderr in stdio mode.
+- With no config, SQLite in the working directory and a one-time admin key printed to stderr.
+- Admin API conventions: error shape, integer `version` with `If-Match` and 409 `version_conflict`, `admin`, `member` and `viewer` roles, `managed_by_file`, `limit` up to 500, `/admin/v1/status` and `/admin/v1/audit`.
+- `__` between nested keys in environment overrides.
+- `org_id` on every runtime and usage table.
+- Streamed usage from transponder arrives as HTTP trailers, and cost lives in transponder.
+
+Made in this spec:
 
 1. Wrap the protocol SDKs inside one package per protocol. rosetta's own types are the only thing agents see.
-2. mcp-go rather than the official MCP Go SDK, for both the MCP server and the airlock client.
-3. AG-UI uses the community SDK's types and SSE writer with a hand-written handler, and can drop the SDK without touching anything outside `protocol/agui`.
-4. Agents push events through a `Stream`. The run ends when `Run` returns.
-5. The runner owns message framing, session history and run records, so adapters stay thin.
-6. HTTP protocols share one listener. stdio is a separate mode that serves exactly one protocol, and shares the database with the server.
-7. MCP exposes each agent as a tool named after the agent.
-8. The OpenAI-compatible client is written in-house.
-9. Agents and settings come from code, config or the admin API. Config wins and is read-only in the admin API.
-10. SQLite by default, Postgres for teams, hand-written SQL, embedded migrations with a small in-house runner.
-11. HTTP auth is on by default, with an `admin` and a `user` role, and a bootstrap admin key on first run. OIDC and OTLP export come next.
-12. The admin API's OpenAPI file is hand-written and checked by tests, not generated.
-13. The literal bridge (remote agents as a source) is the first feature after v0.1.
-
-### Open choices for you
-
-1. **mcp-go or the official go-sdk?** Picked mcp-go. If airlock and logbook end up on the official SDK, rosetta should probably match so the mothership repos share one MCP library.
-2. **Bring the A2A bridge (`kind: a2a`) into v0.1?** It makes a stronger first demo (any A2A agent usable from Zed over ACP) for roughly one more adapter's worth of work.
-3. **Contract note on stdio logging.** In stdio mode logs must go to stderr. airlock's stdio mode has the same issue. Suggest adding one line to `CONTRACT.md`: "In stdio mode, logs go to stderr."
-4. **OIDC timing.** v0.2 as written. Moving it into v0.1 adds a JWKS library and roughly a day of work.
-5. **Bootstrap admin key.** Printing a one-time key on first start is simple and works in Docker. The other option is an open admin API on loopback until the first key is created. All four projects should probably do the same thing, so it may belong in the contract.
-6. **Hand-written OpenAPI or generated?** Hand-written with parity tests as written. Generating server stubs (for example with oapi-codegen) is stricter but adds a code generator to the build.
-7. **Agent card details.** v0.1 advertises streaming, text and JSON input and output. Signed agent cards (supported by a2a-go) can come later if anyone asks.
+2. AG-UI uses the community SDK's types and SSE writer with a hand-written handler, and can drop the SDK without touching anything outside `protocol/agui`.
+3. Agents push events through a `Stream`. The run ends when `Run` returns.
+4. The runner owns message framing, session history and run records, so adapters stay thin.
+5. HTTP protocols share one listener. stdio is a separate mode that serves exactly one protocol, and shares the database with the server through `--config`.
+6. MCP exposes each agent as a tool named after the agent.
+7. The OpenAI-compatible client is written in-house.
+8. Agents and settings come from code, config or the admin API. Config wins and is read-only in the admin API.
+9. Hand-written SQL, embedded migrations with a small in-house runner.
+10. HTTP auth is on by default. OIDC and OTLP export come in v0.2, right after the first release.
+11. The admin API's OpenAPI file is hand-written and checked by tests, not generated, so the build needs no code generator.
+12. The `kind: a2a` remote agent ships in v0.1.
+13. The A2A agent card advertises streaming, text and JSON input and output. Signed cards come later.
