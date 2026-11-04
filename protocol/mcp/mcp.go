@@ -7,11 +7,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/httpx"
 	"github.com/raven-clown/rosetta/protocol"
 )
 
@@ -86,11 +86,8 @@ type callerKey struct{}
 
 func withCaller(ctx context.Context, r *http.Request) context.Context {
 	c := rosetta.Caller{
-		Token:     strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "),
+		Token:     httpx.BearerToken(r.Header.Get("Authorization")),
 		RequestID: r.Header.Get("X-Request-ID"),
-	}
-	if c.Token == r.Header.Get("Authorization") {
-		c.Token = ""
 	}
 	return context.WithValue(ctx, callerKey{}, c)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/httpx"
 	"github.com/raven-clown/rosetta/protocol"
 )
 
@@ -114,7 +115,7 @@ func request(ec *a2asrv.ExecutorContext) *rosetta.Request {
 			}
 			switch strings.ToLower(k) {
 			case "authorization":
-				req.Caller.Token = strings.TrimPrefix(v[0], "Bearer ")
+				req.Caller.Token = httpx.BearerToken(v[0])
 			case "x-request-id":
 				req.Caller.RequestID = v[0]
 			}

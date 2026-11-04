@@ -10,6 +10,7 @@ import (
 	"github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/httpx"
 	"github.com/raven-clown/rosetta/protocol"
 )
 
@@ -56,7 +57,7 @@ func (a *Adapter) Mount(mux *http.ServeMux, agents protocol.Registry, run protoc
 			return
 		}
 		req := request(in)
-		req.Caller = rosetta.Caller{Token: bearer(r), RequestID: r.Header.Get("X-Request-ID")}
+		req.Caller = rosetta.Caller{Token: httpx.BearerToken(r.Header.Get("Authorization")), RequestID: r.Header.Get("X-Request-ID")}
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -72,15 +73,6 @@ func (a *Adapter) Mount(mux *http.ServeMux, agents protocol.Registry, run protoc
 		_ = s.finish(err)
 	})
 	return nil
-}
-
-func bearer(r *http.Request) string {
-	const prefix = "Bearer "
-	h := r.Header.Get("Authorization")
-	if len(h) > len(prefix) && h[:len(prefix)] == prefix {
-		return h[len(prefix):]
-	}
-	return ""
 }
 
 func request(in types.RunAgentInput) *rosetta.Request {
