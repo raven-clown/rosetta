@@ -140,7 +140,7 @@ Expected: `ok`.
 - Consumes: `rosetta.Agent`, `rosetta.Event`.
 - Produces:
   - `registry.New(agents ...rosetta.Agent) (*Registry, error)` with `Get(name string) (rosetta.Agent, bool)`, `List() []rosetta.Agent` (registration order), `Changes() <-chan struct{}` (never fires in this milestone), and `func ValidName(name string) bool`.
-  - `protocol.Runner`, `protocol.Registry`, `protocol.HTTPAdapter`, `protocol.StdioAdapter`, exactly as in design section 8.
+  - `protocol.Runner`, `protocol.Registry`, `protocol.HTTPAdapter`, `protocol.StdioAdapter`, exactly as in design section 8 (`ServeStdio` takes the `Registry`, so MCP can serve every agent and ACP the first).
   - `protocoltest.ScriptedAgent(name string, events ...rosetta.Event) rosetta.Agent`, `protocoltest.AllEvents() []rosetta.Event`, `protocoltest.StaticRegistry(agents ...rosetta.Agent) protocol.Registry` (calls `registry.New`, panics on error).
 
 - [ ] **Step 1: Write the failing tests**
@@ -347,7 +347,7 @@ Expected: `ok`.
 
 **Interfaces:**
 - Consumes: as Task 7.
-- Produces: `acp.New(opts Options) *Adapter` with `Options{Logger *slog.Logger}`, `Name() == "acp"`, `ServeStdio` using `acpsdk.NewAgentSideConnection(agentImpl, out, in)` and returning when `ctx` ends or the connection's `Done()` closes.
+- Produces: `acp.New(opts Options) *Adapter` with `Options{Logger *slog.Logger}`, `Name() == "acp"`, `ServeStdio` serving the first agent in the registry via `acpsdk.NewAgentSideConnection(agentImpl, out, in)` and returning when `ctx` ends or the connection's `Done()` closes.
 
 - [ ] **Step 1: Write the failing tests**
 

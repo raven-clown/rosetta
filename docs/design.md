@@ -307,7 +307,7 @@ type HTTPAdapter interface {
 
 type StdioAdapter interface {
 	Name() string
-	ServeStdio(ctx context.Context, agent rosetta.Agent, run Runner, in io.Reader, out io.Writer) error
+	ServeStdio(ctx context.Context, agents Registry, run Runner, in io.Reader, out io.Writer) error
 }
 ```
 
