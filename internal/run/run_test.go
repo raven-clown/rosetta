@@ -285,3 +285,15 @@ func TestSessionsAreScopedToTheCaller(t *testing.T) {
 		t.Errorf("the same caller saw %d messages, want 2", len(seen))
 	}
 }
+
+func TestSentHistoryIsNotStored(t *testing.T) {
+	store := session.NewMemory(time.Hour, nil)
+	a := agentFunc(func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error { return out.Text("ok") })
+	req := &rosetta.Request{SessionID: "t1", History: []rosetta.Message{}, Input: []rosetta.Part{{Text: "hi"}}}
+	if err := newRunner(store).Run(context.Background(), a, req, record(new([]rosetta.Event))); err != nil {
+		t.Fatal(err)
+	}
+	if store.Len() != 0 {
+		t.Errorf("store has %d sessions, want 0", store.Len())
+	}
+}

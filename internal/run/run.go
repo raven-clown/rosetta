@@ -86,13 +86,16 @@ func (s *sender) finish() (string, error) {
 	return s.text.String(), s.sinkErr
 }
 
-// Run runs agent with req and passes its framed events to sink.
+// Run runs agent with req and passes its framed events to sink. A nil
+// History means the protocol did not send one: it is loaded from the store
+// and the run is saved there afterwards. A non-nil History is used as given.
 func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Request, sink func(rosetta.Event) error) error {
 	name := agent.Card().Name
 	if req.RunID == "" {
 		req.RunID = r.ids()
 	}
-	if req.SessionID != "" && len(req.History) == 0 {
+	keep := req.SessionID != "" && req.History == nil
+	if keep {
 		h, err := r.store.History(ctx, name, sessionKey(req))
 		if err != nil {
 			r.logger.Error("loading session history", "agent", name, "session", req.SessionID, "err", err)
@@ -129,14 +132,13 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 	case err != nil:
 		return err
 	}
-	r.remember(ctx, name, req, text)
+	if keep {
+		r.remember(ctx, name, req, text)
+	}
 	return nil
 }
 
 func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Request, text string) {
-	if req.SessionID == "" {
-		return
-	}
 	msgs := []rosetta.Message{{Role: rosetta.RoleUser, Parts: req.Input}}
 	if text != "" {
 		msgs = append(msgs, rosetta.Message{Role: rosetta.RoleAgent, Parts: []rosetta.Part{{Text: text}}})
