@@ -15,13 +15,16 @@ go build ./...
 go test -race ./...
 golangci-lint run ./...
 make check   # lint plus tests with the 80% coverage check
+go run ./cmd/rosetta serve                   # HTTP: /mcp, /a2a/{agent}, /agui/{agent}, /healthz
+go run ./cmd/rosetta stdio --protocol acp    # or mcp; logs go to stderr
+go test ./protocol/... -update                # rewrite golden files after a deliberate wire change
 ```
 
 `-race` needs cgo. On a machine without a C compiler, run `go test ./...` locally and let CI run the race detector.
 
 ## Layout
 
-The spec in `docs/design.md` is approved. So far only the root package exists. The planned packages:
+The spec in `docs/design.md` is approved. Built so far: the root package, `server/`, `protocol/` and its four adapters, `registry/` (static list), `session/` (in-memory store), `agents/echo/`, `internal/run/`, `internal/httpx/`, `internal/golden/` and `cmd/rosetta/`. The rest of this table is planned:
 
 | Path | Holds |
 |---|---|
@@ -36,7 +39,7 @@ The spec in `docs/design.md` is approved. So far only the root package exists. T
 | `llm/openai/` | OpenAI-compatible chat client used to reach `transponder` |
 | `tools/mcp/` | tool source backed by an MCP server such as `airlock` |
 | `config/` | YAML and `ROSETTA_*` environment overrides |
-| `internal/run/`, `internal/httpx/` | runner (framing, history, run records) and HTTP middleware |
+| `internal/run/`, `internal/httpx/`, `internal/golden/` | runner (framing, history, run records), HTTP helpers, golden file test helper |
 | `cmd/rosetta/` | `serve`, `stdio` and `migrate` commands |
 | `docs/` | `design.md`, `protocols.md`, `issues.md`, `plans/` (implementation plans per milestone) |
 

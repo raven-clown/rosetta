@@ -4,6 +4,21 @@ Write an agent once in Go. Serve it over MCP, A2A, ACP and AG-UI at the same tim
 
 > **Status: in development.** The design is done ([docs/design.md](docs/design.md)) and the code is being built in the open. Nothing is released yet, and the API below may still change. Watch the repository or pick an issue if you want to help shape it.
 
+## Try it
+
+The protocol layer works today, with a built-in echo agent:
+
+```bash
+go run github.com/raven-clown/rosetta/cmd/rosetta@latest serve
+```
+
+```bash
+curl -N -X POST localhost:8080/agui/echo -H 'Content-Type: application/json' \
+  -d '{"threadId":"t1","runId":"r1","messages":[{"id":"u1","role":"user","content":"hello"}],"tools":[],"context":[],"state":null}'
+```
+
+The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`.
+
 ## Why
 
 Each agent protocol reaches a different set of clients:
