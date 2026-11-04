@@ -103,7 +103,7 @@ func userMsg(text string) rosetta.Message {
 
 func TestHistoryLoadedWhenMissing(t *testing.T) {
 	store := session.NewMemory(time.Hour, nil)
-	_ = store.Append(context.Background(), "a", "s1", userMsg("earlier"))
+	_ = store.Append(context.Background(), "a", anonS1, userMsg("earlier"))
 	var seen []rosetta.Message
 	a := agentFunc(func(_ context.Context, req *rosetta.Request, _ rosetta.Stream) error {
 		seen = req.History
@@ -117,7 +117,7 @@ func TestHistoryLoadedWhenMissing(t *testing.T) {
 
 func TestHistoryKeptWhenSent(t *testing.T) {
 	store := session.NewMemory(time.Hour, nil)
-	_ = store.Append(context.Background(), "a", "s1", userMsg("stored"))
+	_ = store.Append(context.Background(), "a", anonS1, userMsg("stored"))
 	var seen []rosetta.Message
 	a := agentFunc(func(_ context.Context, req *rosetta.Request, _ rosetta.Stream) error {
 		seen = req.History
@@ -140,7 +140,7 @@ func TestHistoryAppendedAfterSuccess(t *testing.T) {
 	if err := newRunner(store).Run(context.Background(), a, req, record(new([]rosetta.Event))); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := store.History(context.Background(), "a", "s1")
+	got, _ := store.History(context.Background(), "a", anonS1)
 	if len(got) != 2 || got[0].Role != rosetta.RoleUser || got[0].Parts[0].Text != "hi" ||
 		got[1].Role != rosetta.RoleAgent || got[1].Parts[0].Text != "Hello, Ada." {
 		t.Errorf("stored = %v", got)
@@ -155,7 +155,7 @@ func TestNoAppendOnError(t *testing.T) {
 	if err == nil || err.Error() != "nope" {
 		t.Fatalf("err = %v", err)
 	}
-	if got, _ := store.History(context.Background(), "a", "s1"); len(got) != 0 {
+	if got, _ := store.History(context.Background(), "a", anonS1); len(got) != 0 {
 		t.Errorf("stored = %v", got)
 	}
 }
@@ -306,3 +306,5 @@ func TestAnonymousKeysNeverMatchCallerKeys(t *testing.T) {
 		t.Errorf("anonymous key %q matches a caller key", sessionKey(forged))
 	}
 }
+
+var anonS1 = sessionKey(&rosetta.Request{SessionID: "s1"})
