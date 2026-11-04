@@ -8,5 +8,4 @@
 {"append":true,"artifact":{"artifactId":"response","name":"response","parts":[{"text":"Found it."}]},"contextId":"ctx-1","taskId":"ID"}
 {"artifact":{"artifactId":"ID","name":"report","parts":[{"text":"summary"},{"data":{"score":9}}]},"contextId":"ctx-1","taskId":"ID"}
 {"contextId":"ctx-1","status":{"message":{"messageId":"ID","contextId":"ctx-1","parts":[{"data":{"step":{"finished":true,"name":"plan"}}}],"role":"ROLE_AGENT","taskId":"ID"},"state":"TASK_STATE_WORKING","timestamp":"T"},"taskId":"ID"}
-{"append":true,"artifact":{"artifactId":"response","name":"response","parts":[{"text":""}]},"contextId":"ctx-1","lastChunk":true,"taskId":"ID"}
 {"contextId":"ctx-1","status":{"state":"TASK_STATE_COMPLETED","timestamp":"T"},"taskId":"ID"}

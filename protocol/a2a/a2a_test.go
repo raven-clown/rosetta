@@ -117,14 +117,16 @@ func TestSendMessage(t *testing.T) {
 		t.Errorf("state = %s", task.Status.State)
 	}
 	var text string
+	var parts int
 	for _, a := range task.Artifacts {
 		if a.Name == "response" {
 			for _, p := range a.Parts {
 				text += p.Text()
+				parts++
 			}
 		}
 	}
-	if text != "hello" {
+	if text != "hello" || parts != 1 {
 		t.Errorf("response artifact = %q, artifacts = %+v", text, task.Artifacts)
 	}
 }

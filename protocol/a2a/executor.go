@@ -124,9 +124,21 @@ func request(ec *a2asrv.ExecutorContext) *rosetta.Request {
 	return req
 }
 
+// mapper holds back the latest text chunk, so the real last one can carry
+// lastChunk instead of an extra empty chunk.
 type mapper struct {
 	ec      *a2asrv.ExecutorContext
 	started bool
+	pending *a2a.TaskArtifactUpdateEvent
+}
+
+func (m *mapper) flush() []a2a.Event {
+	if m.pending == nil {
+		return nil
+	}
+	ev := m.pending
+	m.pending = nil
+	return []a2a.Event{ev}
 }
 
 func agentMessage(ec *a2asrv.ExecutorContext, parts ...*a2a.Part) *a2a.Message {
@@ -142,12 +154,19 @@ func (m *mapper) chunk(parts ...*a2a.Part) *a2a.TaskArtifactUpdateEvent {
 }
 
 func (m *mapper) convert(e rosetta.Event) []a2a.Event {
+	out := m.flush()
+	if t, ok := e.(rosetta.TextDelta); ok {
+		m.pending = m.chunk(a2a.NewTextPart(t.Text))
+		return out
+	}
+	return append(out, m.convertOther(e)...)
+}
+
+func (m *mapper) convertOther(e rosetta.Event) []a2a.Event {
 	working := func(data map[string]any) []a2a.Event {
 		return []a2a.Event{a2a.NewStatusUpdateEvent(m.ec, a2a.TaskStateWorking, agentMessage(m.ec, a2a.NewDataPart(data)))}
 	}
 	switch e := e.(type) {
-	case rosetta.TextDelta:
-		return []a2a.Event{m.chunk(a2a.NewTextPart(e.Text))}
 	case rosetta.ToolCall:
 		return working(map[string]any{"toolCall": map[string]any{"id": e.ID, "name": e.Name, "args": decode(e.Args)}})
 	case rosetta.ToolResult:
@@ -177,10 +196,9 @@ func (m *mapper) convert(e rosetta.Event) []a2a.Event {
 
 func (m *mapper) finish(err error) []a2a.Event {
 	var out []a2a.Event
-	if m.started {
-		last := m.chunk(a2a.NewTextPart(""))
-		last.LastChunk = true
-		out = append(out, last)
+	if m.pending != nil {
+		m.pending.LastChunk = true
+		out = m.flush()
 	}
 	switch {
 	case err == nil:
