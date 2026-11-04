@@ -21,14 +21,14 @@ make check   # lint plus tests with the 80% coverage check
 
 ## Layout
 
-No Go code yet. The spec in `docs/design.md` is under review. The planned packages:
+The spec in `docs/design.md` is approved. So far only the root package exists. The planned packages:
 
 | Path | Holds |
 |---|---|
 | `/` (package `rosetta`) | `Agent`, `Card`, `Request`, `Message`, `Part`, events, `Stream`, `Func`. Types only, no protocol imports |
 | `server/` | composes adapters into one `http.Handler`, stdio entry point |
 | `protocol/` | adapter interfaces, the main place contributors add pieces |
-| `protocol/mcp/`, `protocol/a2a/`, `protocol/acp/`, `protocol/agui/` | one adapter per protocol. Only these import a protocol SDK |
+| `protocol/mcp/`, `protocol/a2a/`, `protocol/acp/`, `protocol/agui/` | one adapter per protocol. Only these, `tools/mcp/` and `agents/a2a/` import a protocol SDK |
 | `registry/` | live agent list from code, config and the database |
 | `store/`, `store/migrations/` | store interface, in-memory and SQL stores, embedded migrations per dialect |
 | `admin/`, `api/admin/openapi.yaml` | `/admin/v1` handlers and their OpenAPI description |

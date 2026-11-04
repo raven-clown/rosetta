@@ -1,0 +1,7 @@
+cover.out
+/rosetta
+/rosetta.exe
+*.db
+*.db-shm
+*.db-wal
+/dist/

@@ -82,7 +82,7 @@ Reasons:
 
 - Each protocol is still moving. MCP shipped a new spec version this year that changed headers and removed stream resumption. A2A 1.0 changed task state names and content types. The SDK teams track those changes full time. A small project that reimplements four wire formats falls behind within months.
 - Session handling, JSON-RPC framing, cancellation and capability negotiation are easy to get subtly wrong. The SDKs carry conformance tests for exactly that.
-- The cost of wrapping is the dependency graph and SDK API churn. Both stay contained, because only `protocol/<name>` imports an SDK. Nothing outside that package sees an SDK type.
+- The cost of wrapping is the dependency graph and SDK API churn. Both stay contained, because only `protocol/<name>` and the two client packages (`tools/mcp`, `agents/a2a`) import an SDK. No SDK type appears in rosetta's public API.
 
 Per protocol:
 
