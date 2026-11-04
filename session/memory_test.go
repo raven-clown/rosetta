@@ -132,3 +132,54 @@ func TestMemoryDelete(t *testing.T) {
 		t.Errorf("got %v after delete", got)
 	}
 }
+
+func TestMemoryMaxSessionsEvictsOldest(t *testing.T) {
+	ctx := context.Background()
+	c := &clock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	m := NewMemory(time.Hour, c.now, MaxSessions(2))
+	for _, s := range []string{"s1", "s2", "s3"} {
+		c.t = c.t.Add(time.Minute)
+		_ = m.Append(ctx, "echo", s, msg(s))
+	}
+	if m.Len() != 2 {
+		t.Fatalf("Len() = %d, want 2", m.Len())
+	}
+	if got, _ := m.History(ctx, "echo", "s1"); len(got) != 0 {
+		t.Errorf("oldest session s1 still has %v", got)
+	}
+	if got, _ := m.History(ctx, "echo", "s3"); len(got) != 1 {
+		t.Errorf("newest session s3 = %v", got)
+	}
+}
+
+func TestMemoryFullStoreDropsExpiredFirst(t *testing.T) {
+	ctx := context.Background()
+	c := &clock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	m := NewMemory(time.Hour, c.now, MaxSessions(2))
+	_ = m.Append(ctx, "echo", "old", msg("x"))
+	c.t = c.t.Add(30 * time.Minute)
+	_ = m.Append(ctx, "echo", "keep", msg("x"))
+	c.t = c.t.Add(31 * time.Minute)
+	_ = m.Append(ctx, "echo", "new", msg("x"))
+	if got, _ := m.History(ctx, "echo", "keep"); len(got) != 1 {
+		t.Errorf("live session evicted while an expired one existed")
+	}
+}
+
+func TestMemoryMaxMessagesKeepsNewest(t *testing.T) {
+	ctx := context.Background()
+	m := NewMemory(time.Hour, nil, MaxMessages(2))
+	_ = m.Append(ctx, "echo", "s1", msg("a"), msg("b"))
+	_ = m.Append(ctx, "echo", "s1", msg("c"))
+	got, _ := m.History(ctx, "echo", "s1")
+	if len(got) != 2 || got[0].Parts[0].Text != "b" || got[1].Parts[0].Text != "c" {
+		t.Errorf("got %v, want [b c]", got)
+	}
+}
+
+func TestMemoryDefaultLimits(t *testing.T) {
+	m := NewMemory(time.Hour, nil)
+	if m.maxSessions != DefaultMaxSessions || m.maxMessages != DefaultMaxMessages {
+		t.Errorf("limits = %d, %d", m.maxSessions, m.maxMessages)
+	}
+}
