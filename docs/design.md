@@ -255,7 +255,7 @@ Editors launch this command as a child process. It reads the same config and the
 srv := server.New(server.Options{Logger: logger}, myAgent, otherAgent)
 http.ListenAndServe(":8080", srv.Handler())
 
-server.ServeStdio(ctx, acp.Protocol, myAgent, os.Stdin, os.Stdout)
+server.ServeStdio(ctx, server.ACP, os.Stdin, os.Stdout, server.Options{}, myAgent)
 ```
 
 Library users get an in-memory store unless they pass one in `server.Options.Store`, so embedding rosetta never creates a database file by surprise.

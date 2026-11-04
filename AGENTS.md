@@ -38,7 +38,7 @@ The spec in `docs/design.md` is approved. So far only the root package exists. T
 | `config/` | YAML and `ROSETTA_*` environment overrides |
 | `internal/run/`, `internal/httpx/` | runner (framing, history, run records) and HTTP middleware |
 | `cmd/rosetta/` | `serve`, `stdio` and `migrate` commands |
-| `docs/` | `design.md`, `protocols.md`, `issues.md` |
+| `docs/` | `design.md`, `protocols.md`, `issues.md`, `plans/` (implementation plans per milestone) |
 
 Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
 
