@@ -1,6 +1,6 @@
 # Milestone 1 issues
 
-Milestone 1 from [design.md](design.md#14-first-release-v01-scope): core types, runner, in-memory store, the four protocol adapters, the echo agent, `server`, and the `serve` and `stdio` commands. Each section below is one GitHub issue, in the format from `mothership/contributing/labels.md`. The `Labels:` line becomes the issue's labels.
+Milestone 1 from [design.md](design.md#14-first-release-v01-scope): core types, runner, in-memory store, the four protocol adapters, the echo agent, `server`, and the `serve` and `stdio` commands. Each section below is one GitHub issue, in the format from `mothership/contributing/labels.md`. The `Labels:` line becomes the issue's labels. Posted as issues 1 to 15 under the GitHub milestone "v0.1 milestone 1: core and adapters", in the order below.
 
 ## Core types: Agent, Request, events and Stream
 
