@@ -48,6 +48,20 @@ rosetta does not own the loop. It owns the edge:
 
 The two fit together. A thin bridge package (for example `contrib/adk` or `contrib/eino`, each its own Go module) can turn a framework agent into a `rosetta.Agent`. Those bridges are not in the first release, and they are a good place for outside contributions.
 
+### Everything is free
+
+rosetta has no paid edition and no license key. Roles, audit logs, SSO, clustering on Postgres, the admin API and the future console all ship in the Apache-2.0 build, and nothing is held back for a hosted or enterprise version. The README says so near the top.
+
+The closest products that serve agents over these protocols keep some of that behind a paid plan. Checked on 2026-11-04 against each vendor's own pricing page or docs:
+
+| Product | Protocols it serves | Paid only |
+|---|---|---|
+| LangSmith Deployment (LangGraph Agent Server) | MCP at `/mcp`, A2A at `/a2a/{assistant_id}` | The free Developer plan has no deployments. Plus ($39 per seat per month) includes one small serverless deployment. Self-hosted and hybrid deployment, custom SSO, RBAC and ABAC, and custom workspaces are Enterprise only |
+| CopilotKit | AG-UI | The free self-hosted edition is for non-production use, with a renewable 30-day license. SSO and organization access controls come with the Annual plan |
+| Mastra | its own server, from the Apache-2.0 framework | SSO and multiple teams start at Teams ($250 per month). RBAC and audit logs are Enterprise. A paid license unlocks "licensed self-hosted features" |
+
+Sources: langchain.com/pricing, docs.langchain.com/langsmith/server-mcp, docs.langchain.com/langsmith/server-a2a, copilotkit.ai/pricing, mastra.ai/pricing. Prices and plans change, so the README links to these pages instead of copying the numbers, and only claims what the pages say on the day it is written.
+
 ## 3. State of the protocols and their Go SDKs
 
 Checked on 2026-11-04 against the module proxy.
@@ -484,7 +498,7 @@ When the `api_keys` table is empty and config defines no keys, rosetta creates o
 
 ## 13. Testing
 
-Test-driven throughout, with `go test ./...`. No `-race`, since the build machine has no C compiler. CI on Linux can add `-race` later.
+Test-driven throughout. The shared CI from `mothership/contributing` runs tests on Linux, macOS and Windows (with `-race` except on Windows), lint, CodeQL, dependency review, a Conventional Commits title check, and a coverage gate of 80%. rosetta adds one CI job with a Postgres service for the store suite. The local machine has no C compiler, so local runs use `go test ./...` without `-race`.
 
 - **Core:** runner framing, session history, run records, panic recovery, cancellation. Table tests.
 - **Adapters:** for each protocol, a scripted agent emits a fixed event sequence covering every event type. The adapter's output is compared to golden files, and the SDK's own client reads it back in-process.
@@ -507,7 +521,8 @@ The plan builds this in four milestones, and the first two already make a demo:
 Also in v0.1:
 
 - `examples/`: a library example, a sample config, and a demo script for each protocol.
-- README with the five-minute demo and the "everything is free" note, `docs/protocols.md`, `CONTRIBUTING.md` that points contributors at `protocol/`.
+- README with the five-minute demo and the "everything is free" note, `docs/protocols.md`, and the shared contributing files (already in the repository), with a section in `CONTRIBUTING.md` that points contributors at `protocol/`.
+- Milestone 1 written up as issues in `docs/issues.md` (format from `contributing/labels.md`, with a few `good first issue` items and `adapter` items per protocol) once this spec is approved, for review before they are posted.
 - Dockerfile and release builds for Linux, macOS and Windows.
 
 Out of v0.1 (next, in rough order):
