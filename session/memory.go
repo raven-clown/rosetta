@@ -1,6 +1,7 @@
 package session
 
 import (
+	"container/list"
 	"context"
 	"sync"
 	"time"
@@ -23,12 +24,14 @@ type Memory struct {
 	maxSessions int
 	maxMessages int
 	mu          sync.Mutex
-	data        map[key]*entry
+	data        map[key]*list.Element
+	lru         *list.List
 }
 
 type key struct{ agent, session string }
 
 type entry struct {
+	key  key
 	msgs []rosetta.Message
 	last time.Time
 }
@@ -52,7 +55,8 @@ func NewMemory(ttl time.Duration, now func() time.Time, opts ...Option) *Memory 
 		now:         now,
 		maxSessions: DefaultMaxSessions,
 		maxMessages: DefaultMaxMessages,
-		data:        map[key]*entry{},
+		data:        map[key]*list.Element{},
+		lru:         list.New(),
 	}
 	for _, o := range opts {
 		o(m)
@@ -69,34 +73,30 @@ func (m *Memory) Len() int {
 
 func (m *Memory) expired(e *entry) bool { return m.now().Sub(e.last) > m.ttl }
 
-func (m *Memory) live(k key) *entry {
-	e, ok := m.data[k]
+func (m *Memory) remove(el *list.Element) {
+	delete(m.data, el.Value.(*entry).key)
+	m.lru.Remove(el)
+}
+
+func (m *Memory) live(k key) *list.Element {
+	el, ok := m.data[k]
 	if !ok {
 		return nil
 	}
-	if m.expired(e) {
-		delete(m.data, k)
+	if m.expired(el.Value.(*entry)) {
+		m.remove(el)
 		return nil
 	}
-	return e
+	return el
 }
 
+// makeRoom relies on the list being ordered by last append, oldest first.
 func (m *Memory) makeRoom() {
-	for k, e := range m.data {
-		if m.expired(e) {
-			delete(m.data, k)
-		}
+	for el := m.lru.Front(); el != nil && m.expired(el.Value.(*entry)); el = m.lru.Front() {
+		m.remove(el)
 	}
-	for len(m.data) >= m.maxSessions {
-		var oldest key
-		var at time.Time
-		first := true
-		for k, e := range m.data {
-			if first || e.last.Before(at) {
-				oldest, at, first = k, e.last, false
-			}
-		}
-		delete(m.data, oldest)
+	for m.lru.Len() >= m.maxSessions {
+		m.remove(m.lru.Front())
 	}
 }
 
@@ -104,11 +104,11 @@ func (m *Memory) makeRoom() {
 func (m *Memory) History(_ context.Context, agent, sessionID string) ([]rosetta.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e := m.live(key{agent, sessionID})
-	if e == nil {
+	el := m.live(key{agent, sessionID})
+	if el == nil {
 		return []rosetta.Message{}, nil
 	}
-	return append([]rosetta.Message{}, e.msgs...), nil
+	return append([]rosetta.Message{}, el.Value.(*entry).msgs...), nil
 }
 
 // Append adds messages to the end of the session.
@@ -116,12 +116,15 @@ func (m *Memory) Append(_ context.Context, agent, sessionID string, msgs ...rose
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := key{agent, sessionID}
-	e := m.live(k)
-	if e == nil {
+	el := m.live(k)
+	if el == nil {
 		m.makeRoom()
-		e = &entry{}
-		m.data[k] = e
+		el = m.lru.PushBack(&entry{key: k})
+		m.data[k] = el
+	} else {
+		m.lru.MoveToBack(el)
 	}
+	e := el.Value.(*entry)
 	e.msgs = append(e.msgs, msgs...)
 	if over := len(e.msgs) - m.maxMessages; over > 0 {
 		e.msgs = append([]rosetta.Message{}, e.msgs[over:]...)
@@ -134,6 +137,8 @@ func (m *Memory) Append(_ context.Context, agent, sessionID string, msgs ...rose
 func (m *Memory) Delete(_ context.Context, agent, sessionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.data, key{agent, sessionID})
+	if el, ok := m.data[key{agent, sessionID}]; ok {
+		m.remove(el)
+	}
 	return nil
 }
