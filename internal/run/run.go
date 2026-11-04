@@ -5,6 +5,7 @@ package run
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -92,7 +93,7 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 		req.RunID = r.ids()
 	}
 	if req.SessionID != "" && len(req.History) == 0 {
-		h, err := r.store.History(ctx, name, req.SessionID)
+		h, err := r.store.History(ctx, name, sessionKey(req))
 		if err != nil {
 			r.logger.Error("loading session history", "agent", name, "session", req.SessionID, "err", err)
 		}
@@ -140,7 +141,17 @@ func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Reques
 	if text != "" {
 		msgs = append(msgs, rosetta.Message{Role: rosetta.RoleAgent, Parts: []rosetta.Part{{Text: text}}})
 	}
-	if err := r.store.Append(ctx, agent, req.SessionID, msgs...); err != nil {
+	if err := r.store.Append(ctx, agent, sessionKey(req), msgs...); err != nil {
 		r.logger.Error("saving session history", "agent", agent, "session", req.SessionID, "err", err)
 	}
+}
+
+// sessionKey scopes a session to its caller, so one caller cannot read
+// another's history by guessing the session ID.
+func sessionKey(req *rosetta.Request) string {
+	if req.Caller.Token == "" {
+		return req.SessionID
+	}
+	sum := sha256.Sum256([]byte(req.Caller.Token))
+	return hex.EncodeToString(sum[:8]) + "/" + req.SessionID
 }

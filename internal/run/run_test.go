@@ -261,3 +261,27 @@ func TestDefaultIDs(t *testing.T) {
 		t.Errorf("ids %q %q", a, b)
 	}
 }
+
+func TestSessionsAreScopedToTheCaller(t *testing.T) {
+	store := session.NewMemory(time.Hour, nil)
+	r := newRunner(store)
+	var seen []rosetta.Message
+	a := agentFunc(func(_ context.Context, req *rosetta.Request, out rosetta.Stream) error {
+		seen = req.History
+		return out.Text("ok")
+	})
+	alice := &rosetta.Request{SessionID: "s1", Input: []rosetta.Part{{Text: "secret"}}, Caller: rosetta.Caller{Token: "alice"}}
+	if err := r.Run(context.Background(), a, alice, record(new([]rosetta.Event))); err != nil {
+		t.Fatal(err)
+	}
+	mallory := &rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{Token: "mallory"}}
+	_ = r.Run(context.Background(), a, mallory, record(new([]rosetta.Event)))
+	if len(seen) != 0 {
+		t.Errorf("another caller saw %v", seen)
+	}
+	again := &rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{Token: "alice"}}
+	_ = r.Run(context.Background(), a, again, record(new([]rosetta.Event)))
+	if len(seen) != 2 {
+		t.Errorf("the same caller saw %d messages, want 2", len(seen))
+	}
+}
