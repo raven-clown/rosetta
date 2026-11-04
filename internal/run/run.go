@@ -112,7 +112,7 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 		defer func() {
 			if p := recover(); p != nil {
 				r.logger.Error("agent panicked", "agent", name, "panic", p, "stack", string(debug.Stack()))
-				done <- fmt.Errorf("agent %s: panic: %v", name, p)
+				done <- fmt.Errorf("agent %s panicked, see the server log for details", name)
 			}
 		}()
 		done <- agent.Run(runCtx, req, rosetta.NewStream(s.send))

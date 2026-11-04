@@ -163,7 +163,7 @@ func TestNoAppendOnError(t *testing.T) {
 func TestPanicBecomesError(t *testing.T) {
 	a := agentFunc(func(context.Context, *rosetta.Request, rosetta.Stream) error { panic("boom") })
 	err := newRunner(nil).Run(context.Background(), a, &rosetta.Request{}, record(new([]rosetta.Event)))
-	if err == nil || !strings.Contains(err.Error(), "panic") || !strings.Contains(err.Error(), "boom") {
+	if err == nil || !strings.Contains(err.Error(), "panicked") || strings.Contains(err.Error(), "boom") {
 		t.Errorf("err = %v", err)
 	}
 }
