@@ -298,3 +298,11 @@ func TestSentHistoryIsNotStored(t *testing.T) {
 		t.Errorf("store has %d sessions, want 0", store.Len())
 	}
 }
+
+func TestAnonymousKeysNeverMatchCallerKeys(t *testing.T) {
+	alice := &rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{Token: "alice"}}
+	forged := &rosetta.Request{SessionID: sessionKey(alice)}
+	if sessionKey(forged) == sessionKey(alice) {
+		t.Errorf("anonymous key %q matches a caller key", sessionKey(forged))
+	}
+}

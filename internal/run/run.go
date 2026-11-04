@@ -152,8 +152,8 @@ func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Reques
 // another's history by guessing the session ID.
 func sessionKey(req *rosetta.Request) string {
 	if req.Caller.Token == "" {
-		return req.SessionID
+		return "anon:" + req.SessionID
 	}
 	sum := sha256.Sum256([]byte(req.Caller.Token))
-	return hex.EncodeToString(sum[:8]) + "/" + req.SessionID
+	return "caller:" + hex.EncodeToString(sum[:8]) + "/" + req.SessionID
 }
