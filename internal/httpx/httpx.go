@@ -23,10 +23,15 @@ func BearerToken(header string) string {
 
 var traceHeaders = []string{"Traceparent", "Tracestate"}
 
+// CallerHeader carries the caller ID set by rosetta's own auth. The auth
+// middleware removes it from every incoming request before setting it.
+const CallerHeader = "X-Rosetta-Caller"
+
 // Caller reads the caller's identity and the headers to forward upstream.
 // A missing X-Request-ID is generated.
 func Caller(get func(string) string) rosetta.Caller {
 	c := rosetta.Caller{
+		ID:        get(CallerHeader),
 		Token:     BearerToken(get("Authorization")),
 		RequestID: get("X-Request-ID"),
 		Project:   get("X-Project"),

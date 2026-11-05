@@ -267,3 +267,12 @@ func TestCancelled(t *testing.T) {
 		t.Error("want an error after cancel")
 	}
 }
+
+func TestContextIDUsesCallerID(t *testing.T) {
+	a := contextID(&rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{ID: "key:ci"}})
+	b := contextID(&rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{ID: "key:ops"}})
+	c := contextID(&rosetta.Request{SessionID: "s1", Caller: rosetta.Caller{Token: "key:ci"}})
+	if a == b || a == c || !strings.HasPrefix(a, "caller-") || strings.Contains(a, "ci") {
+		t.Errorf("context IDs %q %q %q", a, b, c)
+	}
+}

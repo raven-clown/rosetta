@@ -21,6 +21,7 @@ type Key struct {
 
 type entry struct {
 	digest [sha256.Size]byte
+	name   string
 	role   string
 }
 
@@ -45,24 +46,33 @@ func isPublic(r *http.Request, a2aPath string) bool {
 	return ok && registry.ValidName(agent)
 }
 
+// CallerHeader is set to "key:<name>" once a key is accepted.
+const CallerHeader = httpx.CallerHeader
+
 // Middleware lets requests through to next only with a key whose role may
 // run agents. Health, metrics and agent cards under a2aPath stay public.
+// An accepted key is removed from the request, so it is never forwarded
+// upstream, and replaced by CallerHeader. With no keys every request
+// passes, minus any CallerHeader it sent.
 func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 	entries := make([]entry, len(keys))
 	for i, k := range keys {
-		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), role: k.Role}
+		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), name: k.Name, role: k.Role}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPublic(r, a2aPath) {
+		r.Header.Del(CallerHeader)
+		if len(entries) == 0 || isPublic(r, a2aPath) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		role := lookup(entries, httpx.BearerToken(r.Header.Get("Authorization")))
-		switch role {
+		e := lookup(entries, httpx.BearerToken(r.Header.Get("Authorization")))
+		switch e.role {
 		case "":
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			fail(w, http.StatusUnauthorized, "unauthorized", "send a valid API key as Authorization: Bearer <key>")
 		case "admin", "member":
+			r.Header.Del("Authorization")
+			r.Header.Set(CallerHeader, "key:"+e.name)
 			next.ServeHTTP(w, r)
 		default:
 			fail(w, http.StatusForbidden, "forbidden", "this key's role cannot run agents")
@@ -72,18 +82,18 @@ func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 
 // lookup compares against every key, so the time taken does not depend on
 // which key matched.
-func lookup(entries []entry, token string) string {
+func lookup(entries []entry, token string) entry {
+	var found entry
 	if token == "" {
-		return ""
+		return found
 	}
 	d := sha256.Sum256([]byte(token))
-	role := ""
 	for _, e := range entries {
 		if subtle.ConstantTimeCompare(d[:], e.digest[:]) == 1 {
-			role = e.role
+			found = e
 		}
 	}
-	return role
+	return found
 }
 
 func fail(w http.ResponseWriter, status int, code, msg string) {

@@ -98,6 +98,13 @@ func writeConfig(t *testing.T, body string) string {
 func fakeModel(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer t-key" {
+			http.Error(w, "wrong key "+r.Header.Get("Authorization"), http.StatusUnauthorized)
+			return
+		}
 		if r.URL.Path != "/v1/chat/completions" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -117,6 +124,7 @@ auth:
     - { name: ci, key: "${TEST_ROSETTA_KEY}", role: member }
 transponder:
   url: `+model.URL+`/v1
+  api_key: t-key
 agents:
   - { name: helper, kind: llm, model: m }
 `)

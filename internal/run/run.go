@@ -178,9 +178,15 @@ func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Reques
 // sessionKey scopes a session to its caller, so one caller cannot read
 // another's history by guessing the session ID.
 func sessionKey(req *rosetta.Request) string {
-	if req.Caller.Token == "" {
+	var who string
+	switch {
+	case req.Caller.ID != "":
+		who = "id:" + req.Caller.ID
+	case req.Caller.Token != "":
+		who = "token:" + req.Caller.Token
+	default:
 		return "anon:" + req.SessionID
 	}
-	sum := sha256.Sum256([]byte(req.Caller.Token))
+	sum := sha256.Sum256([]byte(who))
 	return "caller:" + hex.EncodeToString(sum[:8]) + "/" + req.SessionID
 }

@@ -127,13 +127,18 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 // forms are prefixed, so an anonymous session ID can never take the shape
 // of a caller's.
 func contextID(req *rosetta.Request) string {
+	var who string
 	switch {
 	case req.SessionID == "":
 		return ""
-	case req.Caller.Token == "":
+	case req.Caller.ID != "":
+		who = "id:" + req.Caller.ID
+	case req.Caller.Token != "":
+		who = "token:" + req.Caller.Token
+	default:
 		return "anon-" + req.SessionID
 	}
-	sum := sha256.Sum256([]byte(req.Caller.Token))
+	sum := sha256.Sum256([]byte(who))
 	return "caller-" + hex.EncodeToString(sum[:8]) + "-" + req.SessionID
 }
 

@@ -102,9 +102,6 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 			panic(err)
 		}
 	}
-	if len(opts.APIKeys) == 0 {
-		return &Server{handler: mux}
-	}
 	keys := make([]auth.Key, len(opts.APIKeys))
 	for i, k := range opts.APIKeys {
 		keys[i] = auth.Key(k)

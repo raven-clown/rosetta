@@ -41,8 +41,10 @@ func TestCaller(t *testing.T) {
 		"traceparent", "00-abc-def-01",
 		"tracestate", "k=v",
 		"X-Project", "proj",
+		"X-Rosetta-Caller", "key:ci",
 	))
 	want := rosetta.Caller{
+		ID:        "key:ci",
 		Token:     "tok",
 		RequestID: "req-1",
 		Project:   "proj",

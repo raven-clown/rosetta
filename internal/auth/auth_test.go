@@ -68,3 +68,35 @@ func TestMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestCallerHeader(t *testing.T) {
+	var got http.Header
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r.Header.Clone() })
+	tests := map[string]struct {
+		keys       []Key
+		path, auth string
+		wantCaller string
+		wantAuth   string
+	}{
+		"key replaced by caller": {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/mcp", "Bearer k", "key:ci", ""},
+		"public strips spoof":    {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/healthz", "", "", ""},
+		"no keys strips spoof":   {nil, "/mcp", "Bearer outside-token", "", "Bearer outside-token"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got = nil
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.path, nil)
+			req.Header.Set(CallerHeader, "key:admin")
+			if tt.auth != "" {
+				req.Header.Set("Authorization", tt.auth)
+			}
+			Middleware(tt.keys, "/a2a", next).ServeHTTP(httptest.NewRecorder(), req)
+			if got == nil {
+				t.Fatal("request did not reach the handler")
+			}
+			if got.Get(CallerHeader) != tt.wantCaller || got.Get("Authorization") != tt.wantAuth {
+				t.Errorf("caller %q, authorization %q", got.Get(CallerHeader), got.Get("Authorization"))
+			}
+		})
+	}
+}
