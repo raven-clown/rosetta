@@ -1,8 +1,24 @@
 # rosetta
 
+[![ci](https://github.com/raven-clown/rosetta/actions/workflows/ci.yml/badge.svg)](https://github.com/raven-clown/rosetta/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/raven-clown/rosetta)](https://github.com/raven-clown/rosetta/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/raven-clown/rosetta.svg)](https://pkg.go.dev/github.com/raven-clown/rosetta)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Write an agent once in Go. Serve it over MCP, A2A, ACP and AG-UI at the same time.
 
-> **Status: in development.** The design is done ([docs/design.md](docs/design.md)) and the code is being built in the open. Nothing is released yet, and the API below may still change. Watch the repository or pick an issue if you want to help shape it.
+> **Status: early, [v0.1.0](https://github.com/raven-clown/rosetta/releases/tag/v0.1.0).** Milestones 1 and 2 are done: the four protocol adapters, the `llm`, `a2a` and `echo` agent kinds, a config file, API keys, `/readyz` and metrics. Storage and the admin API come next, and the Go API may still change before v1. Watch the repository or pick an issue if you want to help shape it.
+
+## Install
+
+With Go 1.26 or later:
+
+```bash
+go install github.com/raven-clown/rosetta/cmd/rosetta@latest   # the rosetta command
+go get github.com/raven-clown/rosetta@latest                  # the library, for agents written in Go
+```
+
+Prebuilt binaries for Linux, macOS and Windows are planned.
 
 ## Try it
 
@@ -78,21 +94,22 @@ agents:
 
 **Hosted agent platforms** serve some of these protocols too, but keep parts of it behind a paid plan. rosetta has **no paid edition and no license key**. Roles, audit logs, SSO, Postgres clustering and the admin API all ship in the Apache-2.0 build. See the comparison, with links to each vendor's pricing page, in [the design](docs/design.md#everything-is-free).
 
-## What's planned for v0.1
+## What v0.1.0 has
 
 - One Go interface, `rosetta.Agent`, and four protocol adapters (MCP over Streamable HTTP and stdio, A2A over JSON-RPC and REST, ACP over stdio, AG-UI over SSE)
 - Built-in agent kinds: `llm` (a tool-calling loop over any OpenAI-compatible API), `a2a` (a remote A2A agent) and `echo`
 - Tools through any MCP server, models through any OpenAI-compatible endpoint
-- SQLite by default, Postgres for teams
-- A JSON admin API under `/admin/v1/` with an OpenAPI file, ready for a web console
+- A YAML config with `${VAR}` expansion and `ROSETTA_*` overrides
 - API keys with `admin`, `member` and `viewer` roles, `/healthz`, `/readyz`, Prometheus `/metrics`, JSON logs
+
+Still to come before v1: SQLite and Postgres storage, and a JSON admin API under `/admin/v1/` with an OpenAPI file, ready for a web console.
 
 ## Roadmap
 
 | Milestone | What |
 |---|---|
-| 1 | Core types, runner, the four adapters, echo agent, `rosetta serve` and `rosetta stdio` |
-| 2 | `llm` and `a2a` agent kinds, config file, API keys, health and metrics |
+| 1, in v0.1.0 | Core types, runner, the four adapters, echo agent, `rosetta serve` and `rosetta stdio` |
+| 2, in v0.1.0 | `llm` and `a2a` agent kinds, config file, API keys, health and metrics |
 | 3 | SQLite and Postgres storage, sessions, run history |
 | 4 | Admin API, first-run admin key, audit log, usage |
 | next | OIDC sign-in, OpenTelemetry traces, input-required flows, files and images, framework bridges |
@@ -110,6 +127,9 @@ None of them is required. Each link is a URL in the config.
 ## Help build it
 
 The easiest way in is a protocol adapter: each protocol lives in its own package under `protocol/`, with golden tests that show exactly what goes over the wire. Issues labelled [`good first issue`](https://github.com/raven-clown/rosetta/labels/good%20first%20issue) say which files to change and which tests to add. Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+- Found a bug, or want something new? Open an issue with one of the [issue forms](https://github.com/raven-clown/rosetta/issues/new/choose). Each one says what to include.
+- Pull requests come with a template that lists what reviewers check first in this project, so you know what to cover before you open one.
 
 ## License
 
