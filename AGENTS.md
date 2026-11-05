@@ -51,7 +51,11 @@ Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
 ## Rules
 
 - Follow CONTRIBUTING.md: tests with every change, a failing test first for a bug fix, table-driven tests, no network in unit tests, no bare `time.Sleep`.
-- Commit after every change, with a Conventional Commits message, and push it.
+- Start each piece of work on its own branch off `main`, named `feat/<topic>`, `fix/<topic>`, `ci/<topic>` or `docs/<topic>`. Never commit straight to `main` and never force-push it.
+- Commit after every change, with a Conventional Commits message, and push it to the branch.
+- When the work is done, open a pull request with a Conventional Commits title and a plain English description. Wait until every required check is green: the three test jobs, coverage, lint, analyze, CodeQL, dependency review and pr title. A macOS job cancelled while waiting for a runner gets `gh run rerun <id> --failed`; it is not a failure. Never merge a red pull request.
+- Then merge with `gh pr merge <n> --squash --delete-branch --admin` and delete the local branch: `git switch main && git pull && git branch -D <branch>`.
+- A bug or missing feature in mcp-go, a2a-go, the AG-UI Go SDK or acp-go-sdk gets an upstream issue (search for duplicates first, prove it with a failing test), and a workaround here with the issue link next to it. No `replace` directives.
 - Only `admin` and `member` keys run agents. A rosetta API key is removed from the request once accepted and never forwarded upstream; the caller is then known by `Caller.ID`, a hash of the key. `X-Project` is forwarded only with the caller's own token.
 - Never mention AI, assistants or code generation in code, comments, docs, commit messages, pull requests or issues.
 - Never add `Co-Authored-By`, `Generated with` or similar trailers.
