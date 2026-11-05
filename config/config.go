@@ -87,7 +87,7 @@ type Agent struct {
 
 // Load reads the file at path. environ is in os.Environ form.
 func Load(path string, environ []string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path is the operator's --config flag
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
