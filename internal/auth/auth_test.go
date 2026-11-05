@@ -13,32 +13,38 @@ func TestMiddleware(t *testing.T) {
 		{Name: "ci", Key: "member-key", Role: "member"},
 		{Name: "dash", Key: "viewer-key", Role: "viewer"},
 	}
-	h := Middleware(keys, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := Middleware(keys, "/a2a", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	tests := map[string]struct {
-		path, header string
-		code         int
-		errCode      string
+		method, path, header string
+		code                 int
+		errCode              string
 	}{
-		"no key":          {"/mcp", "", http.StatusUnauthorized, "unauthorized"},
-		"wrong key":       {"/mcp", "Bearer nope", http.StatusUnauthorized, "unauthorized"},
-		"basic scheme":    {"/mcp", "Basic admin-key", http.StatusUnauthorized, "unauthorized"},
-		"key prefix":      {"/mcp", "Bearer admin-ke", http.StatusUnauthorized, "unauthorized"},
-		"admin":           {"/mcp", "Bearer admin-key", http.StatusTeapot, ""},
-		"member":          {"/agui/echo", "bearer member-key", http.StatusTeapot, ""},
-		"viewer":          {"/a2a/echo", "Bearer viewer-key", http.StatusForbidden, "forbidden"},
-		"healthz":         {"/healthz", "", http.StatusTeapot, ""},
-		"readyz":          {"/readyz", "", http.StatusTeapot, ""},
-		"metrics":         {"/metrics", "", http.StatusTeapot, ""},
-		"agent card":      {"/a2a/echo/.well-known/agent-card.json", "", http.StatusTeapot, ""},
-		"default card":    {"/.well-known/agent-card.json", "", http.StatusTeapot, ""},
-		"card lookalike":  {"/a2a/echo/.well-known/agent-card.json/x", "", http.StatusUnauthorized, "unauthorized"},
-		"healthz subpath": {"/healthz/x", "", http.StatusUnauthorized, "unauthorized"},
+		"no key":          {"POST", "/mcp", "", http.StatusUnauthorized, "unauthorized"},
+		"wrong key":       {"POST", "/mcp", "Bearer nope", http.StatusUnauthorized, "unauthorized"},
+		"basic scheme":    {"POST", "/mcp", "Basic admin-key", http.StatusUnauthorized, "unauthorized"},
+		"key prefix":      {"POST", "/mcp", "Bearer admin-ke", http.StatusUnauthorized, "unauthorized"},
+		"admin":           {"POST", "/mcp", "Bearer admin-key", http.StatusTeapot, ""},
+		"member":          {"POST", "/agui/echo", "bearer member-key", http.StatusTeapot, ""},
+		"viewer":          {"POST", "/a2a/echo", "Bearer viewer-key", http.StatusForbidden, "forbidden"},
+		"healthz":         {"GET", "/healthz", "", http.StatusTeapot, ""},
+		"readyz":          {"GET", "/readyz", "", http.StatusTeapot, ""},
+		"metrics":         {"GET", "/metrics", "", http.StatusTeapot, ""},
+		"agent card":      {"GET", "/a2a/echo/.well-known/agent-card.json", "", http.StatusTeapot, ""},
+		"card head":       {"HEAD", "/a2a/echo/.well-known/agent-card.json", "", http.StatusTeapot, ""},
+		"default card":    {"GET", "/.well-known/agent-card.json", "", http.StatusTeapot, ""},
+		"card post":       {"POST", "/a2a/echo/.well-known/agent-card.json", "", http.StatusUnauthorized, "unauthorized"},
+		"card deeper":     {"GET", "/a2a/echo/v1/tasks/.well-known/agent-card.json", "", http.StatusUnauthorized, "unauthorized"},
+		"card elsewhere":  {"GET", "/agui/echo/.well-known/agent-card.json", "", http.StatusUnauthorized, "unauthorized"},
+		"card lookalike":  {"GET", "/a2a/echo/.well-known/agent-card.json/x", "", http.StatusUnauthorized, "unauthorized"},
+		"card bad name":   {"GET", "/a2a/Echo/.well-known/agent-card.json", "", http.StatusUnauthorized, "unauthorized"},
+		"healthz post":    {"POST", "/healthz", "", http.StatusUnauthorized, "unauthorized"},
+		"healthz subpath": {"GET", "/healthz/x", "", http.StatusUnauthorized, "unauthorized"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tt.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 			if tt.header != "" {
 				req.Header.Set("Authorization", tt.header)
 			}

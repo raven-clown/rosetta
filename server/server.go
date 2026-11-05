@@ -109,7 +109,11 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	for i, k := range opts.APIKeys {
 		keys[i] = auth.Key(k)
 	}
-	return &Server{handler: auth.Middleware(keys, mux)}
+	a2aPath := p.A2A.Path
+	if a2aPath == "" {
+		a2aPath = "/a2a"
+	}
+	return &Server{handler: auth.Middleware(keys, a2aPath, mux)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.

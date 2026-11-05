@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/raven-clown/rosetta/internal/httpx"
+	"github.com/raven-clown/rosetta/registry"
 )
 
 // Key is one API key and its role: admin, member or viewer.
@@ -23,19 +24,36 @@ type entry struct {
 	role   string
 }
 
-var public = map[string]bool{"/healthz": true, "/readyz": true, "/metrics": true}
+var public = map[string]bool{"/healthz": true, "/readyz": true, "/metrics": true, cardPath: true}
 
-const cardSuffix = "/.well-known/agent-card.json"
+const cardPath = "/.well-known/agent-card.json"
+
+// isPublic allows only reads of health, metrics and agent cards, matched
+// exactly so no protocol route can pass for one.
+func isPublic(r *http.Request, a2aPath string) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	if public[r.URL.Path] {
+		return true
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, a2aPath+"/")
+	if !ok {
+		return false
+	}
+	agent, ok := strings.CutSuffix(rest, cardPath)
+	return ok && registry.ValidName(agent)
+}
 
 // Middleware lets requests through to next only with a key whose role may
-// run agents. Health, metrics and agent cards stay public.
-func Middleware(keys []Key, next http.Handler) http.Handler {
+// run agents. Health, metrics and agent cards under a2aPath stay public.
+func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 	entries := make([]entry, len(keys))
 	for i, k := range keys {
 		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), role: k.Role}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if public[r.URL.Path] || strings.HasSuffix(r.URL.Path, cardSuffix) {
+		if isPublic(r, a2aPath) {
 			next.ServeHTTP(w, r)
 			return
 		}
