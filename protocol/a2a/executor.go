@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"iter"
-	"strings"
+	"net/http"
 	"sync"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
@@ -108,19 +108,15 @@ func request(ec *a2asrv.ExecutorContext) *rosetta.Request {
 			}
 		}
 	}
+	params := http.Header{}
 	if ec.ServiceParams != nil {
 		for k, v := range ec.ServiceParams.List() {
-			if len(v) == 0 {
-				continue
-			}
-			switch strings.ToLower(k) {
-			case "authorization":
-				req.Caller.Token = httpx.BearerToken(v[0])
-			case "x-request-id":
-				req.Caller.RequestID = v[0]
+			if len(v) > 0 {
+				params.Set(k, v[0])
 			}
 		}
 	}
+	req.Caller = httpx.Caller(params.Get)
 	return req
 }
 

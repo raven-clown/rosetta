@@ -58,6 +58,7 @@ func (r *Request) Text() string {
 type Caller struct {
 	Token     string
 	RequestID string
+	Project   string
 	Trace     http.Header
 }
 
