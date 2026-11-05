@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/metrics"
 	"github.com/raven-clown/rosetta/internal/run"
 	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/a2a"
@@ -40,6 +41,7 @@ type Options struct {
 	DefaultAgent string
 	BaseURL      string
 	Protocols    Protocols
+	Checks       []Check
 }
 
 func (o Options) withDefaults() Options {
@@ -65,11 +67,14 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	if err != nil {
 		panic(err)
 	}
-	runner := run.New(opts.Store, run.WithLogger(opts.Logger))
+	m := metrics.New()
+	runner := run.New(opts.Store, run.WithLogger(opts.Logger), run.WithObserver(m))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok")
 	})
+	mux.Handle("GET /readyz", readyz(opts.Checks))
+	mux.Handle("GET /metrics", m.Handler())
 	p := opts.Protocols
 	adapters := []struct {
 		toggle  Toggle

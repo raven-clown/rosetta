@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/raven-clown/rosetta"
 	"github.com/raven-clown/rosetta/session"
@@ -19,10 +20,26 @@ import (
 
 // Runner implements protocol.Runner.
 type Runner struct {
-	store  session.Store
-	logger *slog.Logger
-	ids    func() string
+	store    session.Store
+	logger   *slog.Logger
+	ids      func() string
+	observer Observer
 }
+
+// Observer is told about every finished run and every failed store call,
+// for metrics.
+type Observer interface {
+	RunDone(agent string, err error, d time.Duration, u rosetta.Usage)
+	StoreError(op string)
+}
+
+type noObserver struct{}
+
+func (noObserver) RunDone(string, error, time.Duration, rosetta.Usage) {}
+func (noObserver) StoreError(string)                                   {}
+
+// WithObserver sets the Observer.
+func WithObserver(o Observer) Option { return func(r *Runner) { r.observer = o } }
 
 // Option configures a Runner.
 type Option func(*Runner)
@@ -35,7 +52,7 @@ func WithIDs(ids func() string) Option { return func(r *Runner) { r.ids = ids } 
 
 // New returns a Runner that keeps history in store.
 func New(store session.Store, opts ...Option) *Runner {
-	r := &Runner{store: store, logger: slog.Default(), ids: randomID}
+	r := &Runner{store: store, logger: slog.Default(), ids: randomID, observer: noObserver{}}
 	for _, o := range opts {
 		o(r)
 	}
@@ -55,6 +72,7 @@ type sender struct {
 	framer  framer
 	sink    func(rosetta.Event) error
 	text    strings.Builder
+	usage   rosetta.Usage
 	cancel  context.CancelFunc
 }
 
@@ -68,8 +86,12 @@ func (s *sender) send(e rosetta.Event) error {
 		return s.sinkErr
 	}
 	e = s.framer.frame(e)
-	if t, ok := e.(rosetta.TextDelta); ok {
-		s.text.WriteString(t.Text)
+	switch e := e.(type) {
+	case rosetta.TextDelta:
+		s.text.WriteString(e.Text)
+	case rosetta.Usage:
+		s.usage.InputTokens += e.InputTokens
+		s.usage.OutputTokens += e.OutputTokens
 	}
 	if err := s.sink(e); err != nil {
 		s.sinkErr = err
@@ -79,18 +101,21 @@ func (s *sender) send(e rosetta.Event) error {
 	return nil
 }
 
-func (s *sender) finish() (string, error) {
+func (s *sender) finish() (string, rosetta.Usage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.done = true
-	return s.text.String(), s.sinkErr
+	return s.text.String(), s.usage, s.sinkErr
 }
 
 // Run runs agent with req and passes its framed events to sink. A nil
 // History means the protocol did not send one: it is loaded from the store
 // and the run is saved there afterwards. A non-nil History is used as given.
-func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Request, sink func(rosetta.Event) error) error {
+func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Request, sink func(rosetta.Event) error) (err error) {
 	name := agent.Card().Name
+	start := time.Now()
+	var usage rosetta.Usage
+	defer func() { r.observer.RunDone(name, err, time.Since(start), usage) }()
 	if req.RunID == "" {
 		req.RunID = r.ids()
 	}
@@ -99,6 +124,7 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 		h, err := r.store.History(ctx, name, sessionKey(req))
 		if err != nil {
 			r.logger.Error("loading session history", "agent", name, "session", req.SessionID, "err", err)
+			r.observer.StoreError("history")
 		}
 		req.History = h
 	}
@@ -118,19 +144,19 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 		done <- agent.Run(runCtx, req, rosetta.NewStream(s.send))
 	}()
 
-	var err error
+	var runErr error
 	select {
-	case err = <-done:
+	case runErr = <-done:
 	case <-runCtx.Done():
 	}
-	text, sinkErr := s.finish()
+	text, usage, sinkErr := s.finish()
 	switch {
 	case sinkErr != nil:
 		return sinkErr
 	case ctx.Err() != nil:
 		return ctx.Err()
-	case err != nil:
-		return err
+	case runErr != nil:
+		return runErr
 	}
 	if keep {
 		r.remember(ctx, name, req, text)
@@ -145,6 +171,7 @@ func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Reques
 	}
 	if err := r.store.Append(ctx, agent, sessionKey(req), msgs...); err != nil {
 		r.logger.Error("saving session history", "agent", agent, "session", req.SessionID, "err", err)
+		r.observer.StoreError("append")
 	}
 }
 
