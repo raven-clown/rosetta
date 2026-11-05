@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/auth"
 	"github.com/raven-clown/rosetta/internal/metrics"
 	"github.com/raven-clown/rosetta/internal/run"
 	"github.com/raven-clown/rosetta/protocol"
@@ -42,6 +43,15 @@ type Options struct {
 	BaseURL      string
 	Protocols    Protocols
 	Checks       []Check
+	APIKeys      []APIKey
+}
+
+// APIKey is a static key with a role: admin, member or viewer. When
+// Options.APIKeys is empty the server checks no keys.
+type APIKey struct {
+	Name string
+	Key  string
+	Role string
 }
 
 func (o Options) withDefaults() Options {
@@ -92,7 +102,14 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 			panic(err)
 		}
 	}
-	return &Server{handler: mux}
+	if len(opts.APIKeys) == 0 {
+		return &Server{handler: mux}
+	}
+	keys := make([]auth.Key, len(opts.APIKeys))
+	for i, k := range opts.APIKeys {
+		keys[i] = auth.Key(k)
+	}
+	return &Server{handler: auth.Middleware(keys, mux)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.
