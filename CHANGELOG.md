@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-05
+
 ### Added
 
 - `rosetta.Agent`, the one interface an agent implements, with `rosetta.Func` for plain functions.
@@ -17,3 +19,6 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - API key auth with `admin`, `member` and `viewer` roles. rosetta's own keys are never forwarded upstream.
 - `/readyz`, which checks transponder and airlock, and Prometheus metrics on `/metrics`.
 - The caller's `traceparent`, `tracestate`, `X-Request-ID` and `X-Project` are forwarded to transponder and airlock.
+
+[Unreleased]: https://github.com/raven-clown/rosetta/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/raven-clown/rosetta/releases/tag/v0.1.0
