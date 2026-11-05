@@ -242,7 +242,7 @@ func TestSessionsKeptApart(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(seen) != 3 || seen[0] == seen[1] || seen[2] != "s1" {
+	if len(seen) != 3 || seen[0] == seen[1] || seen[2] != "anon-s1" || !strings.HasPrefix(seen[0], "caller-") {
 		t.Errorf("remote context IDs = %q", seen)
 	}
 }

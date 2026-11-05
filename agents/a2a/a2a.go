@@ -123,13 +123,18 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 	return m.event(res)
 }
 
-// contextID keeps sessions of different callers apart on the remote.
+// contextID keeps sessions of different callers apart on the remote. Both
+// forms are prefixed, so an anonymous session ID can never take the shape
+// of a caller's.
 func contextID(req *rosetta.Request) string {
-	if req.SessionID == "" || req.Caller.Token == "" {
-		return req.SessionID
+	switch {
+	case req.SessionID == "":
+		return ""
+	case req.Caller.Token == "":
+		return "anon-" + req.SessionID
 	}
 	sum := sha256.Sum256([]byte(req.Caller.Token))
-	return hex.EncodeToString(sum[:8]) + "-" + req.SessionID
+	return "caller-" + hex.EncodeToString(sum[:8]) + "-" + req.SessionID
 }
 
 func parts(in []rosetta.Part) []*a2a.Part {
