@@ -164,3 +164,13 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestExampleConfig(t *testing.T) {
+	cfg, err := Load("../examples/rosetta.yaml", []string{"ROSETTA_LOCAL_KEY=dev-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Agents) != 3 || cfg.Auth.APIKeys[0].Key != "dev-key" {
+		t.Errorf("config = %+v", cfg)
+	}
+}
