@@ -336,3 +336,27 @@ func TestEndToEnd(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestUnlistedToolRefused(t *testing.T) {
+	reply := toolCall(`{}`)
+	reply.Message.ToolCalls[0].Name = "github__delete_repo"
+	chat := &fakeChat{replies: []openai.Response{reply, answer("ok", 0, 0)}}
+	tools := &fakeTools{}
+	a := New(Config{Name: "a", Model: "m", Tools: []string{"search"}}, chat, tools)
+	events, err := runAgent(t, a, input("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools.calls) != 0 {
+		t.Errorf("unlisted tool was called: %v", tools.calls)
+	}
+	var res rosetta.ToolResult
+	for _, e := range events {
+		if r, ok := e.(rosetta.ToolResult); ok {
+			res = r
+		}
+	}
+	if !res.IsError || string(res.Result) != `{"text":"unknown tool github__delete_repo"}` {
+		t.Errorf("result = %s %v", res.Result, res.IsError)
+	}
+}

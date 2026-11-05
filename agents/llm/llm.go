@@ -75,6 +75,7 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 	creq := openai.Request{Model: a.cfg.Model, Messages: messages(a.cfg.SystemPrompt, req)}
 
 	var session ToolSession
+	allowed := map[string]bool{}
 	if a.tools != nil && len(a.cfg.Tools) > 0 {
 		s, err := a.tools.Open(ctx, h)
 		if err != nil {
@@ -87,6 +88,7 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 		}
 		for _, t := range list {
 			creq.Tools = append(creq.Tools, openai.Tool{Name: t.Name, Description: t.Description, Parameters: t.Schema})
+			allowed[t.Name] = true
 		}
 		session = s
 	}
@@ -106,7 +108,7 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 		}
 		creq.Messages = append(creq.Messages, res.Message)
 		for _, call := range res.Message.ToolCalls {
-			msg, err := a.callTool(ctx, session, call, out)
+			msg, err := a.callTool(ctx, session, allowed, call, out)
 			if err != nil {
 				return err
 			}
@@ -116,7 +118,7 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 	return fmt.Errorf("llm: step limit of %d reached", a.cfg.MaxSteps)
 }
 
-func (a *agent) callTool(ctx context.Context, s ToolSession, call openai.ToolCall, out rosetta.Stream) (openai.Message, error) {
+func (a *agent) callTool(ctx context.Context, s ToolSession, allowed map[string]bool, call openai.ToolCall, out rosetta.Stream) (openai.Message, error) {
 	args := json.RawMessage(call.Arguments)
 	valid := json.Valid(args)
 	if !valid {
@@ -130,8 +132,8 @@ func (a *agent) callTool(ctx context.Context, s ToolSession, call openai.ToolCal
 	switch {
 	case !valid:
 		text, isError = "arguments are not valid JSON", true
-	case s == nil:
-		text, isError = "no tools are available", true
+	case !allowed[call.Name]:
+		text, isError = "unknown tool "+call.Name, true
 	default:
 		var err error
 		if text, isError, err = s.Call(ctx, call.Name, args); err != nil {
