@@ -1,0 +1,138 @@
+// Package auth checks static API keys on rosetta's HTTP endpoints.
+package auth
+
+import (
+	"crypto/hmac"
+	"crypto/pbkdf2"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"github.com/raven-clown/rosetta/internal/httpx"
+	"github.com/raven-clown/rosetta/registry"
+)
+
+// Key is one API key and its role: admin, member or viewer.
+type Key struct {
+	Name string
+	Key  string
+	Role string
+}
+
+type entry struct {
+	mac  []byte
+	id   string
+	role string
+}
+
+// macKey is random per process. Keys and tokens are compared as HMACs, so
+// the comparison has a fixed length and the digests mean nothing outside
+// this process.
+var macKey = func() []byte {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return b
+}()
+
+func mac(s string) []byte {
+	h := hmac.New(sha256.New, macKey)
+	_, _ = h.Write([]byte(s))
+	return h.Sum(nil)
+}
+
+const (
+	idSalt  = "rosetta caller id"
+	idIters = 100_000
+)
+
+// callerID derives a stable ID from a key with a slow hash, so the ID can
+// be stored with sessions without making weak keys easy to recover.
+func callerID(key string) string {
+	b, err := pbkdf2.Key(sha256.New, key, []byte(idSalt), idIters, 8)
+	if err != nil {
+		panic(err)
+	}
+	return "key:" + hex.EncodeToString(b)
+}
+
+var public = map[string]bool{"/healthz": true, "/readyz": true, "/metrics": true, cardPath: true}
+
+const cardPath = "/.well-known/agent-card.json"
+
+// isPublic allows only reads of health, metrics and agent cards, matched
+// exactly so no protocol route can pass for one.
+func isPublic(r *http.Request, a2aPath string) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	if public[r.URL.Path] {
+		return true
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, a2aPath+"/")
+	if !ok {
+		return false
+	}
+	agent, ok := strings.CutSuffix(rest, cardPath)
+	return ok && registry.ValidName(agent)
+}
+
+// CallerHeader is set to the accepted key's caller ID, which is unique per
+// key and cannot be guessed from the key's name.
+const CallerHeader = httpx.CallerHeader
+
+// Middleware lets requests through to next only with a key whose role may
+// run agents. Health, metrics and agent cards under a2aPath stay public.
+// An accepted key is removed from the request, so it is never forwarded
+// upstream, and replaced by CallerHeader. With no keys every request
+// passes, minus any CallerHeader it sent.
+func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
+	entries := make([]entry, len(keys))
+	for i, k := range keys {
+		entries[i] = entry{mac: mac(k.Key), id: callerID(k.Key), role: k.Role}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Del(CallerHeader)
+		if len(entries) == 0 || isPublic(r, a2aPath) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		e := lookup(entries, httpx.BearerToken(r.Header.Get("Authorization")))
+		switch e.role {
+		case "":
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			fail(w, http.StatusUnauthorized, "unauthorized", "send a valid API key as Authorization: Bearer <key>")
+		case "admin", "member":
+			r.Header.Del("Authorization")
+			r.Header.Set(CallerHeader, e.id)
+			next.ServeHTTP(w, r)
+		default:
+			fail(w, http.StatusForbidden, "forbidden", "this key's role cannot run agents")
+		}
+	})
+}
+
+// lookup compares against every key, so the time taken does not depend on
+// which key matched.
+func lookup(entries []entry, token string) entry {
+	var found entry
+	if token == "" {
+		return found
+	}
+	t := mac(token)
+	for _, e := range entries {
+		if subtle.ConstantTimeCompare(t, e.mac) == 1 {
+			found = e
+		}
+	}
+	return found
+}
+
+func fail(w http.ResponseWriter, status int, code, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": msg}})
+}

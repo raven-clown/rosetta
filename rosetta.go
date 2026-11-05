@@ -54,10 +54,15 @@ func (r *Request) Text() string {
 	return strings.Join(texts, "\n")
 }
 
-// Caller carries who called and the headers to forward upstream.
+// Caller carries who called and the headers to forward upstream. ID names
+// a caller that rosetta authenticated itself, as "key:" plus a hash of the
+// key, whose credential is not forwarded. Token is the bearer token to
+// forward.
 type Caller struct {
+	ID        string
 	Token     string
 	RequestID string
+	Project   string
 	Trace     http.Header
 }
 

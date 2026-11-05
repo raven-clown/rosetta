@@ -57,7 +57,7 @@ func (a *Adapter) Mount(mux *http.ServeMux, agents protocol.Registry, run protoc
 			return
 		}
 		req := request(in)
-		req.Caller = rosetta.Caller{Token: httpx.BearerToken(r.Header.Get("Authorization")), RequestID: r.Header.Get("X-Request-ID")}
+		req.Caller = httpx.Caller(r.Header.Get)
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")

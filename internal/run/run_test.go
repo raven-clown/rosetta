@@ -308,3 +308,26 @@ func TestAnonymousKeysNeverMatchCallerKeys(t *testing.T) {
 }
 
 var anonS1 = sessionKey(&rosetta.Request{SessionID: "s1"})
+
+func TestSessionKeyUsesCallerID(t *testing.T) {
+	keys := map[string]string{}
+	for name, c := range map[string]rosetta.Caller{
+		"anon":    {},
+		"token":   {Token: "key:ci"},
+		"id ci":   {ID: "key:ci"},
+		"id ops":  {ID: "key:ops"},
+		"id wins": {ID: "key:ci", Token: "other"},
+	} {
+		keys[name] = sessionKey(&rosetta.Request{SessionID: "s1", Caller: c})
+	}
+	if keys["id ci"] != keys["id wins"] {
+		t.Errorf("the caller ID should decide the key: %q vs %q", keys["id ci"], keys["id wins"])
+	}
+	seen := map[string]string{}
+	for _, name := range []string{"anon", "token", "id ci", "id ops"} {
+		if other, ok := seen[keys[name]]; ok {
+			t.Errorf("%s and %s share session key %q", name, other, keys[name])
+		}
+		seen[keys[name]] = name
+	}
+}

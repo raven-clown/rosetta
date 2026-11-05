@@ -1,7 +1,15 @@
-// Package httpx holds HTTP helpers shared by the protocol adapters.
+// Package httpx holds HTTP helpers shared by the protocol adapters and the
+// upstream clients.
 package httpx
 
-import "strings"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
+	"strings"
+
+	"github.com/raven-clown/rosetta"
+)
 
 // BearerToken returns the token from an Authorization header value, or ""
 // when the scheme is not Bearer.
@@ -11,4 +19,61 @@ func BearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(token)
+}
+
+var traceHeaders = []string{"Traceparent", "Tracestate"}
+
+// CallerHeader carries the caller ID set by rosetta's own auth. The auth
+// middleware removes it from every incoming request before setting it.
+const CallerHeader = "X-Rosetta-Caller"
+
+// Caller reads the caller's identity and the headers to forward upstream.
+// A missing X-Request-ID is generated.
+func Caller(get func(string) string) rosetta.Caller {
+	c := rosetta.Caller{
+		ID:        get(CallerHeader),
+		Token:     BearerToken(get("Authorization")),
+		RequestID: get("X-Request-ID"),
+		Project:   get("X-Project"),
+	}
+	if c.RequestID == "" {
+		b := make([]byte, 16)
+		_, _ = rand.Read(b)
+		c.RequestID = hex.EncodeToString(b)
+	}
+	for _, k := range traceHeaders {
+		if v := get(k); v != "" {
+			if c.Trace == nil {
+				c.Trace = http.Header{}
+			}
+			c.Trace.Set(k, v)
+		}
+	}
+	return c
+}
+
+// Outbound returns the headers for a call to transponder or airlock. The
+// caller's token wins, fallbackKey is used when there is none. X-Project
+// goes only with the caller's own token, so a caller cannot pick a project
+// under rosetta's service key.
+func Outbound(c rosetta.Caller, fallbackKey string) http.Header {
+	h := http.Header{}
+	switch {
+	case c.Token != "":
+		h.Set("Authorization", "Bearer "+c.Token)
+	case fallbackKey != "":
+		h.Set("Authorization", "Bearer "+fallbackKey)
+	}
+	if c.RequestID != "" {
+		h.Set("X-Request-ID", c.RequestID)
+	}
+	if c.Project != "" && c.Token != "" {
+		h.Set("X-Project", c.Project)
+	}
+	for _, k := range traceHeaders {
+		if v := c.Trace.Get(k); v != "" {
+			h.Set(k, v)
+		}
+	}
+	return h
 }

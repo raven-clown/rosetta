@@ -1,0 +1,42 @@
+listen_addr: ":9090"
+default_agent: helper
+
+storage:
+  dsn: sqlite:///var/lib/rosetta/rosetta.db
+  secret_key: "${SECRET}"
+
+auth:
+  api_keys:
+    - { name: ci, key: "${CI_KEY}", role: member }
+    - { name: ops, key: ops-key, role: admin }
+
+transponder:
+  url: http://transponder:8080/v1
+  api_key: t-key
+
+airlock:
+  url: http://airlock:8080/mcp
+  api_key: a-key
+
+protocols:
+  mcp:  { enabled: true, path: /tools }
+  a2a:  { enabled: false }
+  agui: { path: /ui }
+
+sessions:
+  ttl: 2h
+
+agents:
+  - name: helper
+    description: Answers questions.
+    kind: llm
+    model: claude-sonnet-5-5
+    system_prompt: Costs are $5 a month.
+    tools: ["github__*", "logbook__recall"]
+    max_steps: 4
+  - name: travel
+    kind: a2a
+    url: https://agents.example.com/travel
+    forward_token: true
+  - name: echo
+    kind: echo

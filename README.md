@@ -17,7 +17,15 @@ curl -N -X POST localhost:8080/agui/echo -H 'Content-Type: application/json' \
   -d '{"threadId":"t1","runId":"r1","messages":[{"id":"u1","role":"user","content":"hello"}],"tools":[],"context":[],"state":null}'
 ```
 
-The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`.
+The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`. Without a config file, auth is off, so keep it on localhost.
+
+For real agents, write a config like [examples/rosetta.yaml](examples/rosetta.yaml) and start it with:
+
+```bash
+ROSETTA_LOCAL_KEY=dev-key rosetta serve --config examples/rosetta.yaml
+```
+
+Callers then send `Authorization: Bearer dev-key`. `/readyz` checks that transponder and airlock answer, and `/metrics` serves Prometheus metrics.
 
 ## Why
 

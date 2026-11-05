@@ -15,8 +15,9 @@ go build ./...
 go test -race ./...
 golangci-lint run ./...
 make check   # lint plus tests with the 80% coverage check
-go run ./cmd/rosetta serve                   # HTTP: /mcp, /a2a/{agent}, /agui/{agent}, /healthz
-go run ./cmd/rosetta stdio --protocol acp    # or mcp; logs go to stderr
+go run ./cmd/rosetta serve                   # echo agent, no auth: /mcp, /a2a/{agent}, /agui/{agent}
+go run ./cmd/rosetta serve --config examples/rosetta.yaml   # agents, keys and upstreams from YAML
+go run ./cmd/rosetta stdio --protocol acp    # or mcp; logs go to stderr; add --config and --agent name
 go test ./protocol/... -update                # rewrite golden files after a deliberate wire change
 ```
 
@@ -24,7 +25,7 @@ go test ./protocol/... -update                # rewrite golden files after a del
 
 ## Layout
 
-The spec in `docs/design.md` is approved. Built so far: the root package, `server/`, `protocol/` and its four adapters, `registry/` (static list), `session/` (in-memory store), `agents/echo/`, `internal/run/`, `internal/httpx/`, `internal/golden/` and `cmd/rosetta/`. The rest of this table is planned:
+The spec in `docs/design.md` is approved. Built so far: the root package, `server/`, `protocol/` and its four adapters, `registry/` (static list), `session/` (in-memory store), `agents/echo/`, `agents/llm/`, `agents/a2a/`, `llm/openai/`, `tools/mcp/`, `config/`, `internal/run/`, `internal/httpx/`, `internal/auth/`, `internal/metrics/`, `internal/golden/`, `cmd/rosetta/` and `examples/`. Storage, the admin API and `migrate` are planned:
 
 | Path | Holds |
 |---|---|
@@ -40,6 +41,8 @@ The spec in `docs/design.md` is approved. Built so far: the root package, `serve
 | `tools/mcp/` | tool source backed by an MCP server such as `airlock` |
 | `config/` | YAML and `ROSETTA_*` environment overrides |
 | `internal/run/`, `internal/httpx/`, `internal/golden/` | runner (framing, history, run records), HTTP helpers, golden file test helper |
+| `internal/auth/`, `internal/metrics/` | API key middleware, Prometheus metrics |
+| `examples/` | sample config |
 | `cmd/rosetta/` | `serve`, `stdio` and `migrate` commands |
 | `docs/` | `design.md`, `protocols.md`, `issues.md`, `plans/` (implementation plans per milestone) |
 
@@ -49,6 +52,7 @@ Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
 
 - Follow CONTRIBUTING.md: tests with every change, a failing test first for a bug fix, table-driven tests, no network in unit tests, no bare `time.Sleep`.
 - Commit after every change, with a Conventional Commits message, and push it.
+- Only `admin` and `member` keys run agents. A rosetta API key is removed from the request once accepted and never forwarded upstream; the caller is then known by `Caller.ID`, a hash of the key. `X-Project` is forwarded only with the caller's own token.
 - Never mention AI, assistants or code generation in code, comments, docs, commit messages, pull requests or issues.
 - Never add `Co-Authored-By`, `Generated with` or similar trailers.
 - No em-dashes. Keep comments short and about why.

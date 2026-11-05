@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/internal/auth"
+	"github.com/raven-clown/rosetta/internal/metrics"
 	"github.com/raven-clown/rosetta/internal/run"
 	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/a2a"
@@ -40,6 +42,16 @@ type Options struct {
 	DefaultAgent string
 	BaseURL      string
 	Protocols    Protocols
+	Checks       []Check
+	APIKeys      []APIKey
+}
+
+// APIKey is a static key with a role: admin, member or viewer. When
+// Options.APIKeys is empty the server checks no keys.
+type APIKey struct {
+	Name string
+	Key  string
+	Role string
 }
 
 func (o Options) withDefaults() Options {
@@ -65,11 +77,14 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	if err != nil {
 		panic(err)
 	}
-	runner := run.New(opts.Store, run.WithLogger(opts.Logger))
+	m := metrics.New()
+	runner := run.New(opts.Store, run.WithLogger(opts.Logger), run.WithObserver(m))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok")
 	})
+	mux.Handle("GET /readyz", readyz(opts.Checks, opts.Logger))
+	mux.Handle("GET /metrics", m.Handler())
 	p := opts.Protocols
 	adapters := []struct {
 		toggle  Toggle
@@ -87,7 +102,15 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 			panic(err)
 		}
 	}
-	return &Server{handler: mux}
+	keys := make([]auth.Key, len(opts.APIKeys))
+	for i, k := range opts.APIKeys {
+		keys[i] = auth.Key(k)
+	}
+	a2aPath := p.A2A.Path
+	if a2aPath == "" {
+		a2aPath = "/a2a"
+	}
+	return &Server{handler: auth.Middleware(keys, a2aPath, mux)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.

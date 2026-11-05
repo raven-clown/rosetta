@@ -85,9 +85,5 @@ func (a *Adapter) newServer(ctx context.Context, agents protocol.Registry, run p
 type callerKey struct{}
 
 func withCaller(ctx context.Context, r *http.Request) context.Context {
-	c := rosetta.Caller{
-		Token:     httpx.BearerToken(r.Header.Get("Authorization")),
-		RequestID: r.Header.Get("X-Request-ID"),
-	}
-	return context.WithValue(ctx, callerKey{}, c)
+	return context.WithValue(ctx, callerKey{}, httpx.Caller(r.Header.Get))
 }

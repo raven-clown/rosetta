@@ -1,0 +1,38 @@
+# Run with: rosetta serve --config examples/rosetta.yaml
+# Every key can be overridden by environment, for example
+# ROSETTA_TRANSPONDER__URL=http://localhost:4000/v1.
+
+listen_addr: ":8080"
+default_agent: helper
+
+auth:
+  api_keys:
+    - { name: local, key: "${ROSETTA_LOCAL_KEY}", role: member }
+
+transponder:
+  url: http://localhost:4000/v1
+  api_key: "${TRANSPONDER_KEY}"
+
+airlock:
+  url: http://localhost:4100/mcp
+  api_key: "${AIRLOCK_KEY}"
+
+sessions:
+  ttl: 24h
+
+agents:
+  - name: helper
+    description: Answers questions and looks things up on GitHub.
+    kind: llm
+    model: claude-sonnet-5-5
+    system_prompt: You are a helpful assistant. Keep answers short.
+    tools: ["github__*"]
+    max_steps: 8
+
+  - name: travel
+    description: A remote A2A agent served over every protocol.
+    kind: a2a
+    url: https://agents.example.com/travel
+
+  - name: echo
+    kind: echo
