@@ -1,0 +1,62 @@
+name: New adapter
+description: Connect rosetta to a new system through one of its plugin interfaces.
+labels: [adapter, enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adapters are self-contained, so they're the easiest way to add something big to rosetta.
+
+        **How to write it**
+        - Title: "Add <name> <kind>", such as "Add Agent kind that wraps a LangGraph server".
+        - Link the docs of the system you want to connect to.
+        - Say how it can be tested without network, such as a fake server or recorded responses.
+        - Protocol adapters implement the interfaces in `protocol/` and get the shared conformance tests in `protocol/protocoltest`. Agent kinds live in `agents/`, tool sources in `tools/`. Only adapters may import a protocol SDK.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of adapter
+      options:
+        - "Protocol adapter (`protocol`)"
+        - "Agent kind (`agents`)"
+        - "Tool source (`tools`)"
+        - "LLM client (`llm`)"
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: What it connects to
+      description: The product or protocol, its version and a link to its docs.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Who would use it, and what they do today without it.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config sketch
+      description: How a user would turn it on.
+      render: yaml
+  - type: textarea
+    id: testing
+    attributes:
+      label: How to test it without network
+      description: A fake server, recorded responses or an embedded mode.
+    validations:
+      required: true
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: "Would you like to build it?"
+      options:
+        - "Yes"
+        - Yes, with some help
+        - "No"
+    validations:
+      required: true
