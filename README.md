@@ -1,13 +1,27 @@
-# rosetta
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/header-dark.svg">
+  <img src="docs/assets/header-light.svg" alt="rosetta: agent protocol bridge. Write an agent once, serve it over MCP, A2A, ACP and AG-UI." width="100%">
+</picture>
 
-[![ci](https://github.com/raven-clown/rosetta/actions/workflows/ci.yml/badge.svg)](https://github.com/raven-clown/rosetta/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/raven-clown/rosetta)](https://github.com/raven-clown/rosetta/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/raven-clown/rosetta.svg)](https://pkg.go.dev/github.com/raven-clown/rosetta)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+<div align="center">
+
+[![ci](https://img.shields.io/github/actions/workflow/status/raven-clown/rosetta/ci.yml?branch=main&style=for-the-badge&label=ci&logo=githubactions&logoColor=white)](https://github.com/raven-clown/rosetta/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/raven-clown/rosetta?style=for-the-badge&color=F97316)](https://github.com/raven-clown/rosetta/releases)
+[![Go Reference](https://img.shields.io/badge/go-reference-F97316?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/raven-clown/rosetta)
+[![license](https://img.shields.io/badge/license-Apache--2.0-F97316?style=for-the-badge)](LICENSE)
+
+</div>
 
 Write an agent once in Go. Serve it over MCP, A2A, ACP and AG-UI at the same time.
 
 > **Status: early, [v0.1.0](https://github.com/raven-clown/rosetta/releases/tag/v0.1.0).** Milestones 1 and 2 are done: the four protocol adapters, the `llm`, `a2a` and `echo` agent kinds, a config file, API keys, `/readyz` and metrics. Storage and the admin API come next, and the Go API may still change before v1. Watch the repository or pick an issue if you want to help shape it.
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+  <img src="docs/assets/how-it-works-light.svg" alt="Requests arrive over MCP, A2A, ACP and AG-UI. The same agent answers each one, and the reply goes back in the protocol it came from." width="100%">
+</picture>
 
 ## Install
 
