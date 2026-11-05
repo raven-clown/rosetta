@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -219,26 +221,31 @@ func TestEmptyRegistry(t *testing.T) {
 	}
 }
 
-func TestPromptWaitsForConnection(t *testing.T) {
-	started := make(chan struct{})
-	a := rosetta.Func(rosetta.Card{Name: "a"}, func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
-		close(started)
-		return out.Text("hi")
-	})
-	x := newAgent(a, protocoltest.NewRunner())
-	x.sessions["s1"] = &session{}
-	done := make(chan error, 1)
-	go func() {
-		_, err := x.Prompt(t.Context(), acpsdk.PromptRequest{SessionId: "s1", Prompt: []acpsdk.ContentBlock{acpsdk.TextBlock("x")}})
-		done <- err
-	}()
-	<-started
-	rec := &recorder{}
-	x.connect(rec)
-	if err := <-done; err != nil {
-		t.Fatalf("prompt: %v", err)
+type checkedReader struct {
+	opened *atomic.Bool
+	t      *testing.T
+}
+
+func (c checkedReader) Read(p []byte) (int, error) {
+	if !c.opened.Load() {
+		c.t.Error("read before the gate opened")
 	}
-	if got := rec.all(); len(got) != 1 || got[0].Update.AgentMessageChunk == nil {
-		t.Errorf("updates = %+v", got)
+	return copy(p, "x"), nil
+}
+
+func TestGateHoldsReads(t *testing.T) {
+	var opened atomic.Bool
+	g := newGate(checkedReader{&opened, t})
+	got := make(chan string, 1)
+	go func() {
+		b := make([]byte, 1)
+		n, _ := g.Read(b)
+		got <- string(b[:n])
+	}()
+	runtime.Gosched()
+	opened.Store(true)
+	g.open()
+	if s := <-got; s != "x" {
+		t.Errorf("read %q", s)
 	}
 }
