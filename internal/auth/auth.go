@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"crypto/pbkdf2"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -21,8 +22,24 @@ type Key struct {
 }
 
 type entry struct {
-	digest [sha256.Size]byte
-	role   string
+	key  []byte
+	id   string
+	role string
+}
+
+const (
+	idSalt  = "rosetta caller id"
+	idIters = 100_000
+)
+
+// callerID derives a stable ID from a key with a slow hash, so the ID can
+// be stored with sessions without making weak keys easy to recover.
+func callerID(key string) string {
+	b, err := pbkdf2.Key(sha256.New, key, []byte(idSalt), idIters, 8)
+	if err != nil {
+		panic(err)
+	}
+	return "key:" + hex.EncodeToString(b)
 }
 
 var public = map[string]bool{"/healthz": true, "/readyz": true, "/metrics": true, cardPath: true}
@@ -46,8 +63,8 @@ func isPublic(r *http.Request, a2aPath string) bool {
 	return ok && registry.ValidName(agent)
 }
 
-// CallerHeader is set to "key:" plus a hash of the accepted key. The hash
-// is unique per key and cannot be guessed from the key's name.
+// CallerHeader is set to the accepted key's caller ID, which is unique per
+// key and cannot be guessed from the key's name.
 const CallerHeader = httpx.CallerHeader
 
 // Middleware lets requests through to next only with a key whose role may
@@ -58,7 +75,7 @@ const CallerHeader = httpx.CallerHeader
 func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 	entries := make([]entry, len(keys))
 	for i, k := range keys {
-		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), role: k.Role}
+		entries[i] = entry{key: []byte(k.Key), id: callerID(k.Key), role: k.Role}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(CallerHeader)
@@ -73,7 +90,7 @@ func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 			fail(w, http.StatusUnauthorized, "unauthorized", "send a valid API key as Authorization: Bearer <key>")
 		case "admin", "member":
 			r.Header.Del("Authorization")
-			r.Header.Set(CallerHeader, "key:"+hex.EncodeToString(e.digest[:8]))
+			r.Header.Set(CallerHeader, e.id)
 			next.ServeHTTP(w, r)
 		default:
 			fail(w, http.StatusForbidden, "forbidden", "this key's role cannot run agents")
@@ -88,9 +105,9 @@ func lookup(entries []entry, token string) entry {
 	if token == "" {
 		return found
 	}
-	d := sha256.Sum256([]byte(token))
+	t := []byte(token)
 	for _, e := range entries {
-		if subtle.ConstantTimeCompare(d[:], e.digest[:]) == 1 {
+		if subtle.ConstantTimeCompare(t, e.key) == 1 {
 			found = e
 		}
 	}

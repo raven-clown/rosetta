@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -79,7 +81,7 @@ func TestCallerHeader(t *testing.T) {
 		wantCaller string
 		wantAuth   string
 	}{
-		"key replaced by caller": {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/mcp", "Bearer k", "key:8254c329a92850f6", ""},
+		"key replaced by caller": {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/mcp", "Bearer k", callerID("k"), ""},
 		"public strips spoof":    {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/healthz", "", "", ""},
 		"no keys strips spoof":   {nil, "/mcp", "Bearer outside-token", "", "Bearer outside-token"},
 	}
@@ -115,5 +117,16 @@ func TestCallerIDsDifferForSameName(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] == ids[1] || strings.Contains(ids[0], "ci") {
 		t.Errorf("caller IDs = %q", ids)
+	}
+}
+
+func TestCallerIDIsSlowHash(t *testing.T) {
+	id := callerID("dev-key")
+	plain := sha256.Sum256([]byte("dev-key"))
+	if len(id) != len("key:")+16 || !strings.HasPrefix(id, "key:") || strings.Contains(id, hex.EncodeToString(plain[:8])) {
+		t.Errorf("caller ID %q", id)
+	}
+	if callerID("dev-key") != id {
+		t.Error("caller ID is not stable")
 	}
 }
