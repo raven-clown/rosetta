@@ -55,9 +55,9 @@ func (r *Request) Text() string {
 }
 
 // Caller carries who called and the headers to forward upstream. ID names
-// a caller that rosetta authenticated itself, such as "key:" plus a hash of
-// the key, whose
-// credential is not forwarded. Token is the bearer token to forward.
+// a caller that rosetta authenticated itself, as "key:" plus a hash of the
+// key, whose credential is not forwarded. Token is the bearer token to
+// forward.
 type Caller struct {
 	ID        string
 	Token     string
