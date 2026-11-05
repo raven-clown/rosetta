@@ -142,12 +142,14 @@ func (c *Config) validate() error {
 	if !c.Auth.Disabled && len(c.Auth.APIKeys) == 0 {
 		return errors.New("auth.api_keys: add at least one key, or set auth.disabled: true")
 	}
-	seenKeys := map[string]bool{}
+	seenKeys, seenNames := map[string]bool{}, map[string]bool{}
 	for i, k := range c.Auth.APIKeys {
 		field := fmt.Sprintf("auth.api_keys[%d]", i)
 		switch {
 		case k.Name == "":
 			return fmt.Errorf("%s.name: is required", field)
+		case seenNames[k.Name]:
+			return fmt.Errorf("%s.name: %q is used by an earlier key", field, k.Name)
 		case k.Key == "":
 			return fmt.Errorf("%s.key: is empty", field)
 		case seenKeys[k.Key]:
@@ -155,7 +157,7 @@ func (c *Config) validate() error {
 		case !roles[k.Role]:
 			return fmt.Errorf("%s.role: must be admin, member or viewer, not %q", field, k.Role)
 		}
-		seenKeys[k.Key] = true
+		seenKeys[k.Key], seenNames[k.Name] = true, true
 	}
 	for name, p := range map[string]Protocol{"mcp": c.Protocols.MCP, "a2a": c.Protocols.A2A, "agui": c.Protocols.AGUI} {
 		if p.Path != "" && !strings.HasPrefix(p.Path, "/") {

@@ -85,7 +85,7 @@ func TestOutbound(t *testing.T) {
 			"Traceparent":   {"tp"},
 			"Tracestate":    {"ts"},
 		}},
-		"fallback": {rosetta.Caller{RequestID: "r"}, "key", http.Header{
+		"fallback": {rosetta.Caller{RequestID: "r", Project: "theirs"}, "key", http.Header{
 			"Authorization": {"Bearer key"},
 			"X-Request-Id":  {"r"},
 		}},

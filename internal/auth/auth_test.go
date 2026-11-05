@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -78,7 +79,7 @@ func TestCallerHeader(t *testing.T) {
 		wantCaller string
 		wantAuth   string
 	}{
-		"key replaced by caller": {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/mcp", "Bearer k", "key:ci", ""},
+		"key replaced by caller": {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/mcp", "Bearer k", "key:8254c329a92850f6", ""},
 		"public strips spoof":    {[]Key{{Name: "ci", Key: "k", Role: "member"}}, "/healthz", "", "", ""},
 		"no keys strips spoof":   {nil, "/mcp", "Bearer outside-token", "", "Bearer outside-token"},
 	}
@@ -98,5 +99,21 @@ func TestCallerHeader(t *testing.T) {
 				t.Errorf("caller %q, authorization %q", got.Get(CallerHeader), got.Get("Authorization"))
 			}
 		})
+	}
+}
+
+func TestCallerIDsDifferForSameName(t *testing.T) {
+	keys := []Key{{Name: "ci", Key: "k1", Role: "member"}, {Name: "ci", Key: "k2", Role: "member"}}
+	var ids []string
+	h := Middleware(keys, "/a2a", http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		ids = append(ids, r.Header.Get(CallerHeader))
+	}))
+	for _, k := range []string{"k1", "k2"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer "+k)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	if len(ids) != 2 || ids[0] == ids[1] || strings.Contains(ids[0], "ci") {
+		t.Errorf("caller IDs = %q", ids)
 	}
 }

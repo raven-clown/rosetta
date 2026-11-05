@@ -52,7 +52,7 @@ Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
 
 - Follow CONTRIBUTING.md: tests with every change, a failing test first for a bug fix, table-driven tests, no network in unit tests, no bare `time.Sleep`.
 - Commit after every change, with a Conventional Commits message, and push it.
-- Only `admin` and `member` keys run agents. A rosetta API key is removed from the request once accepted and never forwarded upstream; the caller is then known by `Caller.ID`.
+- Only `admin` and `member` keys run agents. A rosetta API key is removed from the request once accepted and never forwarded upstream; the caller is then known by `Caller.ID`, a hash of the key. `X-Project` is forwarded only with the caller's own token.
 - Never mention AI, assistants or code generation in code, comments, docs, commit messages, pull requests or issues.
 - Never add `Co-Authored-By`, `Generated with` or similar trailers.
 - No em-dashes. Keep comments short and about why.

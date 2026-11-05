@@ -4,6 +4,7 @@ package auth
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -21,7 +22,6 @@ type Key struct {
 
 type entry struct {
 	digest [sha256.Size]byte
-	name   string
 	role   string
 }
 
@@ -46,7 +46,8 @@ func isPublic(r *http.Request, a2aPath string) bool {
 	return ok && registry.ValidName(agent)
 }
 
-// CallerHeader is set to "key:<name>" once a key is accepted.
+// CallerHeader is set to "key:" plus a hash of the accepted key. The hash
+// is unique per key and cannot be guessed from the key's name.
 const CallerHeader = httpx.CallerHeader
 
 // Middleware lets requests through to next only with a key whose role may
@@ -57,7 +58,7 @@ const CallerHeader = httpx.CallerHeader
 func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 	entries := make([]entry, len(keys))
 	for i, k := range keys {
-		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), name: k.Name, role: k.Role}
+		entries[i] = entry{digest: sha256.Sum256([]byte(k.Key)), role: k.Role}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(CallerHeader)
@@ -72,7 +73,7 @@ func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 			fail(w, http.StatusUnauthorized, "unauthorized", "send a valid API key as Authorization: Bearer <key>")
 		case "admin", "member":
 			r.Header.Del("Authorization")
-			r.Header.Set(CallerHeader, "key:"+e.name)
+			r.Header.Set(CallerHeader, "key:"+hex.EncodeToString(e.digest[:8]))
 			next.ServeHTTP(w, r)
 		default:
 			fail(w, http.StatusForbidden, "forbidden", "this key's role cannot run agents")

@@ -53,7 +53,9 @@ func Caller(get func(string) string) rosetta.Caller {
 }
 
 // Outbound returns the headers for a call to transponder or airlock. The
-// caller's token wins, fallbackKey is used when there is none.
+// caller's token wins, fallbackKey is used when there is none. X-Project
+// goes only with the caller's own token, so a caller cannot pick a project
+// under rosetta's service key.
 func Outbound(c rosetta.Caller, fallbackKey string) http.Header {
 	h := http.Header{}
 	switch {
@@ -65,7 +67,7 @@ func Outbound(c rosetta.Caller, fallbackKey string) http.Header {
 	if c.RequestID != "" {
 		h.Set("X-Request-ID", c.RequestID)
 	}
-	if c.Project != "" {
+	if c.Project != "" && c.Token != "" {
 		h.Set("X-Project", c.Project)
 	}
 	for _, k := range traceHeaders {

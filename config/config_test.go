@@ -126,21 +126,22 @@ func TestValidate(t *testing.T) {
 		yaml  string
 		field string
 	}{
-		"no keys":           {"listen_addr: ':1'\n", "auth.api_keys"},
-		"empty key":         {"auth: {api_keys: [{name: k, key: '', role: admin}]}\n", "auth.api_keys[0].key"},
-		"no key name":       {"auth: {api_keys: [{key: v, role: admin}]}\n", "auth.api_keys[0].name"},
-		"bad role":          {"auth: {api_keys: [{name: k, key: v, role: root}]}\n", "auth.api_keys[0].role"},
-		"bad name":          {keys + "agents: [{name: Bad Name, kind: echo}]\n", "agents[0].name"},
-		"duplicate name":    {keys + "agents: [{name: a, kind: echo}, {name: a, kind: echo}]\n", "agents[1].name"},
-		"bad kind":          {keys + "agents: [{name: a, kind: robot}]\n", "agents[0].kind"},
-		"llm no model":      {keys + "transponder: {url: http://t}\nagents: [{name: a, kind: llm}]\n", "agents[0].model"},
-		"llm no upstream":   {keys + "agents: [{name: a, kind: llm, model: m}]\n", "transponder.url"},
-		"a2a no url":        {keys + "agents: [{name: a, kind: a2a}]\n", "agents[0].url"},
-		"unknown default":   {keys + "default_agent: nope\nagents: [{name: a, kind: echo}]\n", "default_agent"},
-		"negative steps":    {keys + "transponder: {url: http://t}\nagents: [{name: a, kind: llm, model: m, max_steps: -1}]\n", "agents[0].max_steps"},
-		"bad ttl":           {keys + "sessions: {ttl: -1h}\n", "sessions.ttl"},
-		"duplicate key":     {"auth: {api_keys: [{name: k, key: v, role: admin}, {name: k2, key: v, role: viewer}]}\n", "auth.api_keys[1].key"},
-		"bad protocol path": {keys + "protocols: {mcp: {path: tools}}\n", "protocols.mcp.path"},
+		"no keys":            {"listen_addr: ':1'\n", "auth.api_keys"},
+		"empty key":          {"auth: {api_keys: [{name: k, key: '', role: admin}]}\n", "auth.api_keys[0].key"},
+		"no key name":        {"auth: {api_keys: [{key: v, role: admin}]}\n", "auth.api_keys[0].name"},
+		"bad role":           {"auth: {api_keys: [{name: k, key: v, role: root}]}\n", "auth.api_keys[0].role"},
+		"bad name":           {keys + "agents: [{name: Bad Name, kind: echo}]\n", "agents[0].name"},
+		"duplicate name":     {keys + "agents: [{name: a, kind: echo}, {name: a, kind: echo}]\n", "agents[1].name"},
+		"bad kind":           {keys + "agents: [{name: a, kind: robot}]\n", "agents[0].kind"},
+		"llm no model":       {keys + "transponder: {url: http://t}\nagents: [{name: a, kind: llm}]\n", "agents[0].model"},
+		"llm no upstream":    {keys + "agents: [{name: a, kind: llm, model: m}]\n", "transponder.url"},
+		"a2a no url":         {keys + "agents: [{name: a, kind: a2a}]\n", "agents[0].url"},
+		"unknown default":    {keys + "default_agent: nope\nagents: [{name: a, kind: echo}]\n", "default_agent"},
+		"negative steps":     {keys + "transponder: {url: http://t}\nagents: [{name: a, kind: llm, model: m, max_steps: -1}]\n", "agents[0].max_steps"},
+		"bad ttl":            {keys + "sessions: {ttl: -1h}\n", "sessions.ttl"},
+		"duplicate key name": {"auth: {api_keys: [{name: k, key: v1, role: admin}, {name: k, key: v2, role: viewer}]}\n", "auth.api_keys[1].name"},
+		"duplicate key":      {"auth: {api_keys: [{name: k, key: v, role: admin}, {name: k2, key: v, role: viewer}]}\n", "auth.api_keys[1].key"},
+		"bad protocol path":  {keys + "protocols: {mcp: {path: tools}}\n", "protocols.mcp.path"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
