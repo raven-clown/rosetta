@@ -46,9 +46,11 @@ func (a *Adapter) ServeStdio(ctx context.Context, agents protocol.Registry, run 
 		return errors.New("acp: no agent to serve")
 	}
 	impl := newAgent(list[0], run)
-	conn := acpsdk.NewAgentSideConnection(impl, out, in)
+	g := newGate(in)
+	conn := acpsdk.NewAgentSideConnection(impl, out, g)
 	conn.SetLogger(a.logger)
-	impl.connect(conn)
+	impl.conn = conn
+	g.open()
 	select {
 	case <-ctx.Done():
 	case <-conn.Done():
@@ -64,7 +66,6 @@ type agent struct {
 	agent    rosetta.Agent
 	run      protocol.Runner
 	conn     updater
-	ready    chan struct{}
 	mu       sync.Mutex
 	sessions map[acpsdk.SessionId]*session
 }
@@ -133,7 +134,7 @@ func (x *agent) Prompt(ctx context.Context, p acpsdk.PromptRequest) (acpsdk.Prom
 	}
 	err := x.run.Run(runCtx, x.agent, req, func(e rosetta.Event) error {
 		for _, u := range updates(e) {
-			if err := x.update(runCtx, acpsdk.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+			if err := x.conn.SessionUpdate(runCtx, acpsdk.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
 				return err
 			}
 		}
@@ -178,22 +179,27 @@ type updater interface {
 }
 
 func newAgent(a rosetta.Agent, run protocol.Runner) *agent {
-	return &agent{agent: a, run: run, sessions: map[acpsdk.SessionId]*session{}, ready: make(chan struct{})}
+	return &agent{agent: a, run: run, sessions: map[acpsdk.SessionId]*session{}}
 }
 
-// connect publishes the connection. The SDK starts reading before its
-// constructor returns, so handlers wait on ready instead of reading conn
-// directly.
-func (x *agent) connect(u updater) {
-	x.conn = u
-	close(x.ready)
+// gate holds back the SDK's reads until open is called. The SDK starts
+// reading inside its constructor, before SetLogger and before the agent
+// holds the connection, which races both. Remove once
+// https://github.com/coder/acp-go-sdk/issues/58 is fixed in a release.
+type gate struct {
+	r       io.Reader
+	ready   chan struct{}
+	release func()
 }
 
-func (x *agent) update(ctx context.Context, n acpsdk.SessionNotification) error {
-	select {
-	case <-x.ready:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	return x.conn.SessionUpdate(ctx, n)
+func newGate(r io.Reader) *gate {
+	ready := make(chan struct{})
+	return &gate{r: r, ready: ready, release: sync.OnceFunc(func() { close(ready) })}
+}
+
+func (g *gate) open() { g.release() }
+
+func (g *gate) Read(p []byte) (int, error) {
+	<-g.ready
+	return g.r.Read(p)
 }
