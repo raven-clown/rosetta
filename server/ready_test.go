@@ -25,7 +25,7 @@ func TestReadyz(t *testing.T) {
 		"all ok":    {[]Check{ok}, http.StatusOK, map[string]any{"status": "ok", "checks": map[string]any{"transponder": "ok"}}},
 		"one fails": {[]Check{ok, bad}, http.StatusServiceUnavailable, map[string]any{
 			"status": "unavailable",
-			"checks": map[string]any{"transponder": "ok", "airlock": "connection refused"},
+			"checks": map[string]any{"transponder": "ok", "airlock": "unavailable"},
 		}},
 	}
 	for name, tt := range tests {

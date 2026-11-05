@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -40,7 +41,9 @@ func HTTPCheck(name, url string, client *http.Client) Check {
 
 const checkTimeout = 2 * time.Second
 
-func readyz(checks []Check) http.HandlerFunc {
+// readyz is public, so it names failing checks but keeps their errors,
+// which can hold internal addresses, in the log.
+func readyz(checks []Check, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		results := make(map[string]string, len(checks))
 		var mu sync.Mutex
@@ -52,7 +55,8 @@ func readyz(checks []Check) http.HandlerFunc {
 				defer cancel()
 				res := "ok"
 				if err := c.Check(ctx); err != nil {
-					res = err.Error()
+					res = "unavailable"
+					logger.Warn("readiness check failed", "check", c.Name, "err", err)
 				}
 				mu.Lock()
 				defer mu.Unlock()

@@ -83,7 +83,7 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok")
 	})
-	mux.Handle("GET /readyz", readyz(opts.Checks))
+	mux.Handle("GET /readyz", readyz(opts.Checks, opts.Logger))
 	mux.Handle("GET /metrics", m.Handler())
 	p := opts.Protocols
 	adapters := []struct {
