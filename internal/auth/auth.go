@@ -2,7 +2,9 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/pbkdf2"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -22,9 +24,24 @@ type Key struct {
 }
 
 type entry struct {
-	key  []byte
+	mac  []byte
 	id   string
 	role string
+}
+
+// macKey is random per process. Keys and tokens are compared as HMACs, so
+// the comparison has a fixed length and the digests mean nothing outside
+// this process.
+var macKey = func() []byte {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return b
+}()
+
+func mac(s string) []byte {
+	h := hmac.New(sha256.New, macKey)
+	_, _ = h.Write([]byte(s))
+	return h.Sum(nil)
 }
 
 const (
@@ -75,7 +92,7 @@ const CallerHeader = httpx.CallerHeader
 func Middleware(keys []Key, a2aPath string, next http.Handler) http.Handler {
 	entries := make([]entry, len(keys))
 	for i, k := range keys {
-		entries[i] = entry{key: []byte(k.Key), id: callerID(k.Key), role: k.Role}
+		entries[i] = entry{mac: mac(k.Key), id: callerID(k.Key), role: k.Role}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(CallerHeader)
@@ -105,9 +122,9 @@ func lookup(entries []entry, token string) entry {
 	if token == "" {
 		return found
 	}
-	t := []byte(token)
+	t := mac(token)
 	for _, e := range entries {
-		if subtle.ConstantTimeCompare(t, e.key) == 1 {
+		if subtle.ConstantTimeCompare(t, e.mac) == 1 {
 			found = e
 		}
 	}
