@@ -9,6 +9,7 @@
 [![release](https://img.shields.io/github/v/release/raven-clown/rosetta?style=for-the-badge&color=F97316)](https://github.com/raven-clown/rosetta/releases)
 [![Go Reference](https://img.shields.io/badge/go-reference-F97316?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/raven-clown/rosetta)
 [![license](https://img.shields.io/badge/license-Apache--2.0-F97316?style=for-the-badge)](LICENSE)
+[![openssf scorecard](https://img.shields.io/ossf-scorecard/github.com/raven-clown/rosetta?style=for-the-badge&label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/raven-clown/rosetta)
 
 </div>
 
@@ -144,6 +145,12 @@ The easiest way in is a protocol adapter: each protocol lives in its own package
 
 - Found a bug, or want something new? Open an issue with one of the [issue forms](https://github.com/raven-clown/rosetta/issues/new/choose). Each one says what to include.
 - Pull requests come with a template that lists what reviewers check first in this project, so you know what to cover before you open one.
+
+## Contributors
+
+Thanks to everyone who has helped build rosetta.
+
+<a href="https://github.com/raven-clown/rosetta/graphs/contributors"><img src="https://contrib.rocks/image?repo=raven-clown/rosetta" alt="Contributors to rosetta"></a>
 
 ## License
 
