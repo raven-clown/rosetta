@@ -91,12 +91,15 @@ type live struct {
 	keys    *server.Keys
 	fixed   []rosetta.Agent
 	info    []admin.FixedAgent
-	build   *builder
-	logger  *slog.Logger
-	mu      sync.Mutex
-	rev     int64
-	agents  map[string]builtAgent
-	skipped map[string]int64
+	build  *builder
+	logger *slog.Logger
+	// reloading serializes reloads; agents and skipped belong to it. mu
+	// guards only rev, so the watcher never waits on a slow build.
+	reloading sync.Mutex
+	agents    map[string]builtAgent
+	skipped   map[string]int64
+	mu        sync.Mutex
+	rev       int64
 }
 
 func newLive(st *store.Store, cfg *config.Config, fixed []rosetta.Agent, info []admin.FixedAgent, keys *server.Keys, logger *slog.Logger) (*live, error) {
@@ -108,15 +111,23 @@ func newLive(st *store.Store, cfg *config.Config, fixed []rosetta.Agent, info []
 		agents: map[string]builtAgent{}, skipped: map[string]int64{}}, nil
 }
 
-// reload reads stored agents and keys and swaps them in. A stored agent
-// that fails to build, or that has the name of a fixed one, is logged and
-// left out, so one bad row cannot stop the server.
+// reload reads stored agents and keys and swaps them in. Keys go first,
+// since building an a2a agent can wait on its card for seconds. A stored
+// agent that fails to build, or that has the name of a fixed one, is
+// logged and left out, so one bad row cannot stop the server.
 func (l *live) reload(ctx context.Context) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.reloading.Lock()
+	defer l.reloading.Unlock()
 	rev, err := l.store.Revision(ctx)
 	if err != nil {
 		return err
+	}
+	if l.keys != nil {
+		keys, err := l.store.ListKeys(ctx)
+		if err != nil {
+			return err
+		}
+		l.keys.SetStored(keys)
 	}
 	stored, err := l.store.ListAgents(ctx)
 	if err != nil {
@@ -162,14 +173,9 @@ func (l *live) reload(ctx context.Context) error {
 		return err
 	}
 	l.agents = built
-	if l.keys != nil {
-		keys, err := l.store.ListKeys(ctx)
-		if err != nil {
-			return err
-		}
-		l.keys.SetStored(keys)
-	}
+	l.mu.Lock()
 	l.rev = rev
+	l.mu.Unlock()
 	return nil
 }
 

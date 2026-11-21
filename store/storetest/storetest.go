@@ -62,6 +62,7 @@ func Run(t *testing.T, open Opener) {
 		"concurrent append":   concurrentAppend,
 		"bad part data":       badPartData,
 		"revoke twice":        revokeTwice,
+		"recreated agent":     recreatedAgent,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, open) })
@@ -524,12 +525,12 @@ func concurrentIfMatch(t *testing.T, open Opener) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = s.CreateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(`{}`)}, au("agent.create", "x"))
+	created, _ := s.CreateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(`{}`)}, au("agent.create", "x"))
 	_ = s.Append(ctx, "a", "anon:s", user("hi"))
 	list, _, _ := s.ListSessions(ctx, store.SessionFilter{}, store.Page{})
 	writes := map[string]func(i int) error{
 		"update agent": func(i int) error {
-			_, err := s.UpdateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(fmt.Sprintf(`{"n":%d}`, i))}, 1, au("agent.update", "x"))
+			_, err := s.UpdateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(fmt.Sprintf(`{"n":%d}`, i))}, created.Version, au("agent.update", "x"))
 			return err
 		},
 		"revoke key":     func(int) error { return s.RevokeKey(ctx, k.ID, 1, au("api_key.revoke", k.ID)) },
@@ -593,6 +594,28 @@ func badPartData(t *testing.T, open Opener) {
 	got, err := s.History(ctx, "a", "anon:s")
 	if err != nil || !reflect.DeepEqual(got, []rosetta.Message{user("kept")}) {
 		t.Errorf("history = %+v, %v", got, err)
+	}
+}
+
+// recreatedAgent checks that an agent deleted and made again never gets a
+// version the old one had, so a write based on the old one fails and a
+// reload sees a change.
+func recreatedAgent(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	first, _ := s.CreateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(`{"kind":"echo"}`)}, au("agent.create", "x"))
+	if err := s.DeleteAgent(ctx, "x", first.Version, au("agent.delete", "x")); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(`{"kind":"a2a"}`)}, au("agent.create", "x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Version <= first.Version {
+		t.Errorf("recreated version %d, first was %d", second.Version, first.Version)
+	}
+	if err := s.DeleteAgent(ctx, "x", first.Version, au("agent.delete", "x")); !errors.Is(err, store.ErrVersion) {
+		t.Errorf("delete with the old version = %v, want ErrVersion", err)
 	}
 }
 

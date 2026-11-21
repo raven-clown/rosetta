@@ -273,6 +273,10 @@ func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) error {
 	if err := a2aNeedsAdmin(r, spec.Kind); err != nil {
 		return err
 	}
+	if version == 0 {
+		// The kind check above is about cur, so delete only cur.
+		version = cur.Version
+	}
 	err = h.opts.Store.DeleteAgent(r.Context(), name, version, store.Audit{Actor: actor(r), Action: "agent.delete", Target: name})
 	if errors.Is(err, store.ErrNotFound) {
 		return notFound("agent " + name)

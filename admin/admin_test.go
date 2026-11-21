@@ -260,6 +260,15 @@ func TestPatchWithoutIfMatchKeepsOtherFields(t *testing.T) {
 	}
 }
 
+// TestDeleteWithoutIfMatchChecksWhatItRead checks that a DELETE without
+// If-Match only removes the agent it looked at.
+func TestDeleteWithoutIfMatchChecksWhatItRead(t *testing.T) {
+	e := newEnv(t)
+	e.want(e.do("member", "POST", "/agents", `{"name":"bot","kind":"echo"}`), http.StatusCreated, "", "")
+	e.want(e.do("member", "DELETE", "/agents/bot", ""), http.StatusNoContent, "", "")
+	e.want(e.do("member", "DELETE", "/agents/bot", ""), http.StatusNotFound, "not_found", "")
+}
+
 func TestA2AAgentsNeedAdmin(t *testing.T) {
 	e := newEnv(t)
 	e.want(e.do("admin", "POST", "/agents", `{"name":"remote","kind":"a2a","url":"https://agents.example.com","forward_token":true}`), http.StatusCreated, "", "")

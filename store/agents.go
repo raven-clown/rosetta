@@ -49,20 +49,26 @@ func (s *Store) GetAgent(ctx context.Context, name string) (Agent, error) {
 	return a, nil
 }
 
-// CreateAgent stores a new agent at version 1, with its audit record.
+// CreateAgent stores a new agent with its audit record. Its first version
+// is the revision this write makes. Every agent write moves the revision,
+// so an agent deleted and made again never repeats an old version, and a
+// write or a reload based on the old one sees the difference.
 func (s *Store) CreateAgent(ctx context.Context, a Agent, au Audit) (Agent, error) {
 	now := s.now()
-	a.Version, a.Created, a.Updated = 1, now, now
+	a.Created, a.Updated = now, now
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		_, err := s.exec(ctx, tx, `INSERT INTO agents (org_id, name, spec, version, created_at, updated_at, updated_by) VALUES (?, ?, ?, 1, ?, ?, ?)`,
-			org, a.Name, string(a.Spec), nanos(now), nanos(now), a.UpdatedBy)
+		if err := s.bump(ctx, tx); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM revision WHERE id = 1`).Scan(&a.Version); err != nil {
+			return err
+		}
+		_, err := s.exec(ctx, tx, `INSERT INTO agents (org_id, name, spec, version, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			org, a.Name, string(a.Spec), a.Version, nanos(now), nanos(now), a.UpdatedBy)
 		if isUnique(err) {
 			return ErrConflict
 		}
 		if err != nil {
-			return err
-		}
-		if err := s.bump(ctx, tx); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, au)

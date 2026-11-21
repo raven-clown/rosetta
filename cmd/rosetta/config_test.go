@@ -18,6 +18,7 @@ import (
 	acpsdk "github.com/coder/acp-go-sdk"
 
 	"github.com/raven-clown/rosetta/config"
+	"github.com/raven-clown/rosetta/internal/auth"
 	"github.com/raven-clown/rosetta/store"
 )
 
@@ -346,6 +347,55 @@ func TestReloadFromAnotherProcess(t *testing.T) {
 	}
 	if code, _ := get(t, "http://"+s.addr+"/agui/broken", "ops-key", aguiInput); code != http.StatusNotFound {
 		t.Errorf("broken agent: status %d", code)
+	}
+}
+
+// TestSlowAgentDoesNotDelayKeys checks that an a2a agent whose card server
+// hangs does not hold back a key made at the same time.
+func TestSlowAgentDoesNotDelayKeys(t *testing.T) {
+	dir := inTemp(t)
+	old := reloadEvery
+	reloadEvery = 20 * time.Millisecond
+	t.Cleanup(func() { reloadEvery = old })
+	hang := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-hang:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(slow.Close)
+	t.Cleanup(func() { close(hang) })
+	path := writeConfig(t, "auth:\n  api_keys:\n    - { name: ops, key: ops-key, role: admin }\n")
+	s := startServe(t, "--config", path)
+
+	other, err := store.Open(t.Context(), "sqlite://"+filepath.Join(dir, "rosetta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Close() }()
+	spec := json.RawMessage(`{"name":"slow","kind":"a2a","url":"` + slow.URL + `"}`)
+	if _, err := other.CreateAgent(t.Context(), store.Agent{Name: "slow", Spec: spec}, store.Audit{Actor: "test", Action: "agent.create", Target: "slow"}); err != nil {
+		t.Fatal(err)
+	}
+	const key = "a-key-made-by-another-process-0123456789"
+	if _, err := other.CreateKey(t.Context(), store.Key{ID: "k_other", Name: "other", Role: "viewer", Hash: auth.Hash(key)},
+		store.Audit{Actor: "test", Action: "api_key.create", Target: "k_other"}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if code, _ := get(t, "http://"+s.addr+"/admin/v1/status", key, ""); code == http.StatusOK {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the new key did not work within two seconds")
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatal(t.Context().Err())
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 }
 
