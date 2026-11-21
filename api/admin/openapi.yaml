@@ -334,9 +334,9 @@ components:
           type: object
           additionalProperties: { type: boolean }
         upstreams:
-          description: Each configured upstream and the database, "ok" or the error
+          description: Each configured upstream and the database, "ok" or "unavailable". The reason is in the server log
           type: object
-          additionalProperties: { type: string }
+          additionalProperties: { type: string, enum: [ok, unavailable] }
         agents: { type: integer, minimum: 0 }
     AgentSpec:
       type: object

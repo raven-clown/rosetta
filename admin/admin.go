@@ -316,7 +316,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) error {
 	}
 	ups["storage"] = "ok"
 	if err := h.opts.Store.Ping(r.Context()); err != nil {
-		ups["storage"] = err.Error()
+		h.opts.Logger.Error("admin status: storage", "err", err)
+		ups["storage"] = "unavailable"
 	}
 	agents, err := h.allAgents(r.Context())
 	if err != nil {
