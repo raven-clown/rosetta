@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/raven-clown/rosetta"
@@ -137,6 +138,11 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	for _, a := range adapters {
 		if a.toggle.Disabled {
 			continue
+		}
+		// Requests under /admin take any role, so a protocol there would
+		// let a viewer key run agents.
+		if p := a.toggle.Path; p == "/admin" || strings.HasPrefix(p, "/admin/") {
+			panic("server: protocol path " + p + " is under /admin, which the admin API owns")
 		}
 		if err := a.adapter.Mount(mux, reg, runner); err != nil {
 			panic(err)

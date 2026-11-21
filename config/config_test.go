@@ -148,6 +148,8 @@ func TestValidate(t *testing.T) {
 		"duplicate key name": {"auth: {api_keys: [{name: k, key: v1, role: admin}, {name: k, key: v2, role: viewer}]}\n", "auth.api_keys[1].name"},
 		"duplicate key":      {"auth: {api_keys: [{name: k, key: v, role: admin}, {name: k2, key: v, role: viewer}]}\n", "auth.api_keys[1].key"},
 		"bad protocol path":  {keys + "protocols: {mcp: {path: tools}}\n", "protocols.mcp.path"},
+		"path under admin":   {keys + "protocols: {agui: {path: /admin/v1/chat}}\n", "protocols.agui.path"},
+		"path is admin":      {keys + "protocols: {a2a: {path: /admin}}\n", "protocols.a2a.path"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

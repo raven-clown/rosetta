@@ -199,6 +199,9 @@ func (c *Config) validate() error {
 		if p.Path != "" && !strings.HasPrefix(p.Path, "/") {
 			return fmt.Errorf("protocols.%s.path: must start with /", name)
 		}
+		if p.Path == "/admin" || strings.HasPrefix(p.Path, "/admin/") {
+			return fmt.Errorf("protocols.%s.path: must not be under /admin, which the admin API owns", name)
+		}
 	}
 	if c.Sessions.TTL < 0 {
 		return errors.New("sessions.ttl: must be positive")

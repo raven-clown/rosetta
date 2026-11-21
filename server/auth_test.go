@@ -68,6 +68,15 @@ func TestEmptyKeySetIsNotOpen(t *testing.T) {
 	}
 }
 
+func TestProtocolUnderAdminPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic for a protocol path under /admin")
+		}
+	}()
+	New(Options{Protocols: Protocols{AGUI: Toggle{Path: "/admin/v1/chat"}}}, echo.New("echo"))
+}
+
 func TestRegistryAndAgentsPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

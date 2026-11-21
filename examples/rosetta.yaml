@@ -6,7 +6,7 @@ listen_addr: ":8080"
 default_agent: helper
 
 # SQLite by default. For several replicas use one Postgres database:
-#   dsn: postgres://rosetta:secret@db:5432/rosetta
+#   dsn: postgres://rosetta:secret@db:5432/rosetta?sslmode=verify-full
 storage:
   dsn: sqlite://rosetta.db
 

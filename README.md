@@ -68,8 +68,10 @@ Add an agent without writing a file:
 
 ```bash
 curl -X POST localhost:8080/admin/v1/agents -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-  -d '{"name":"helper","kind":"llm","model":"claude-sonnet-5-5","system_prompt":"Keep answers short."}'
+  -d '{"name":"greeter","kind":"echo","description":"Says it back."}'
 ```
+
+An `llm` agent needs a model endpoint first: set `transponder.url` in a config file, or `ROSETTA_TRANSPONDER__URL=http://localhost:4000/v1`, then create it with `"kind":"llm","model":"claude-sonnet-5-5"`.
 
 For agents kept in git, write a config like [examples/rosetta.yaml](examples/rosetta.yaml) and start it with:
 
@@ -85,8 +87,10 @@ State lives in SQL: session history, a record of every run, and the agents and A
 
 ```yaml
 storage:
-  dsn: postgres://rosetta:secret@db:5432/rosetta
+  dsn: postgres://rosetta:secret@db:5432/rosetta?sslmode=verify-full
 ```
+
+Say `sslmode` in the DSN. Without it, pgx uses `prefer`, which falls back to plaintext and does not check the server's certificate. Use `verify-full` across a network and `disable` only on a private one.
 
 Migrations run at startup, and `rosetta migrate --config rosetta.yaml` runs them on their own, for a separate deploy step. A change made through the admin API reaches every replica within two seconds.
 
