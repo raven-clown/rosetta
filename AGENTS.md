@@ -15,17 +15,21 @@ go build ./...
 go test -race ./...
 golangci-lint run ./...
 make check   # lint plus tests with the 80% coverage check
-go run ./cmd/rosetta serve                   # echo agent, no auth: /mcp, /a2a/{agent}, /agui/{agent}
+go run ./cmd/rosetta serve                   # echo agent, rosetta.db here, admin key printed once to stderr
 go run ./cmd/rosetta serve --config examples/rosetta.yaml   # agents, keys and upstreams from YAML
 go run ./cmd/rosetta stdio --protocol acp    # or mcp; logs go to stderr; add --config and --agent name
+go run ./cmd/rosetta migrate --config examples/rosetta.yaml # migrations only
 go test ./protocol/... -update                # rewrite golden files after a deliberate wire change
+ROSETTA_TEST_POSTGRES_DSN=postgres://... go test -tags integration ./store/...   # the store suite on Postgres
 ```
 
-`-race` needs cgo. On a machine without a C compiler, run `go test ./...` locally and let CI run the race detector.
+`-race` needs cgo. On a machine without a C compiler, run `go test ./...` locally and let CI run the race detector. CI runs the store suite on Postgres in the `postgres` job; each test gets its own schema.
+
+Tests that start `rosetta serve` or `rosetta stdio` call `inTemp(t)` first, so `rosetta.db` lands in a temp directory and never in the repository.
 
 ## Layout
 
-The spec in `docs/design.md` is approved. Built so far: the root package, `server/`, `protocol/` and its four adapters, `registry/` (static list), `session/` (in-memory store), `agents/echo/`, `agents/llm/`, `agents/a2a/`, `llm/openai/`, `tools/mcp/`, `config/`, `internal/run/`, `internal/httpx/`, `internal/auth/`, `internal/metrics/`, `internal/golden/`, `cmd/rosetta/` and `examples/`. Storage, the admin API and `migrate` are planned:
+The spec in `docs/design.md` is approved. Everything in the table is built. The plan for each release is in `docs/plans/`; what moved to v0.3.0 is listed in `docs/plans/v0.2.0.md`.
 
 | Path | Holds |
 |---|---|
@@ -33,17 +37,18 @@ The spec in `docs/design.md` is approved. Built so far: the root package, `serve
 | `server/` | composes adapters into one `http.Handler`, stdio entry point |
 | `protocol/` | adapter interfaces, the main place contributors add pieces |
 | `protocol/mcp/`, `protocol/a2a/`, `protocol/acp/`, `protocol/agui/` | one adapter per protocol. Only these, `tools/mcp/` and `agents/a2a/` import a protocol SDK |
-| `registry/` | live agent list from code, config and the database |
-| `store/`, `store/migrations/` | store interface, in-memory and SQL stores, embedded migrations per dialect |
-| `admin/`, `api/admin/openapi.yaml` | `/admin/v1` handlers and their OpenAPI description |
+| `registry/` | live agent list, swapped with `Set` while serving |
+| `session/` | the in-memory history store library users get by default |
+| `store/`, `store/migrations/{sqlite,postgres}/`, `store/storetest/` | the SQL store (SQLite, in memory, Postgres), embedded migrations per dialect, the suite every dialect passes |
+| `admin/`, `api/admin/openapi.yaml` | `/admin/v1` handlers and their OpenAPI description. `admin/spec_test.go` checks routes against the file both ways and validates every response the tests get |
 | `agents/llm/`, `agents/echo/`, `agents/a2a/` | built-in agent kinds, including a remote A2A agent |
 | `llm/openai/` | OpenAI-compatible chat client used to reach `transponder` |
 | `tools/mcp/` | tool source backed by an MCP server such as `airlock` |
 | `config/` | YAML and `ROSETTA_*` environment overrides |
 | `internal/run/`, `internal/httpx/`, `internal/golden/` | runner (framing, history, run records), HTTP helpers, golden file test helper |
-| `internal/auth/`, `internal/metrics/` | API key middleware, Prometheus metrics |
+| `internal/auth/`, `internal/metrics/` | API keys (static and stored, swapped on reload), Prometheus metrics with the shared request series |
 | `examples/` | sample config |
-| `cmd/rosetta/` | `serve`, `stdio` and `migrate` commands |
+| `cmd/rosetta/` | `serve`, `stdio` and `migrate`, the first admin key, and the loop that reloads stored agents and keys when `revision` moves |
 | `docs/` | `design.md`, `protocols.md`, `issues.md`, `plans/` (implementation plans per milestone) |
 
 Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
@@ -58,6 +63,9 @@ Golden files under `testdata/` keep LF line endings (see `.gitattributes`).
 - Fill in `.github/PULL_REQUEST_TEMPLATE.md`, including the project checks. Issues use the forms in `.github/ISSUE_TEMPLATE/`: bug report, feature request, new adapter and docs.
 - Release after every finished plan, at the latest main: a `chore(release): vX.Y.Z` pull request moves the Unreleased entries in CHANGELOG.md under the version, and once it merges, `gh release create vX.Y.Z --target <merge commit>` tags that commit. A plan bumps the minor version, a fix-only release the patch. Check that no release pull request is open before merging anything else.
 - A bug or missing feature in mcp-go, a2a-go, the AG-UI Go SDK or acp-go-sdk gets an upstream issue (search for duplicates first, prove it with a failing test), and a workaround here with the issue link next to it. No `replace` directives.
+- A schema change adds the next numbered migration to both `store/migrations/sqlite` and `store/migrations/postgres`. Migrations follow expand and contract: they only add tables, indexes, and columns that are nullable or have a default. A store method goes into `store/storetest` too, so both dialects get the same tests. Every table except `revision` and `schema_migrations` has `org_id`, and every query filters by it.
+- A new admin endpoint goes into `api/admin/openapi.yaml` first, then into the `routes` list in `admin/admin.go`. Every write takes the audit record into the same store call, and reloads afterwards.
+- Serving a request reads no SQL for auth: stored keys are cached in `auth.Keys` and swapped in on reload. Run records are written after the run and their failure never fails a run. A run record's ID is made by rosetta; the protocol's run ID is kept apart because a client chooses it.
 - Only `admin` and `member` keys run agents. A rosetta API key is removed from the request once accepted and never forwarded upstream; the caller is then known by `Caller.ID`, a hash of the key. `X-Project` is forwarded only with the caller's own token.
 - Never mention AI, assistants or code generation in code, comments, docs, commit messages, pull requests or issues.
 - Never add `Co-Authored-By`, `Generated with` or similar trailers.

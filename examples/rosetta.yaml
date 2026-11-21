@@ -5,6 +5,11 @@
 listen_addr: ":8080"
 default_agent: helper
 
+# SQLite by default. For several replicas use one Postgres database:
+#   dsn: postgres://rosetta:secret@db:5432/rosetta
+storage:
+  dsn: sqlite://rosetta.db
+
 auth:
   api_keys:
     - { name: local, key: "${ROSETTA_LOCAL_KEY}", role: member }
@@ -19,6 +24,9 @@ airlock:
 
 sessions:
   ttl: 24h
+
+runs:
+  retention: 720h
 
 agents:
   - name: helper

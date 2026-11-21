@@ -4,6 +4,27 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- SQLite and Postgres storage through `storage.dsn`, with migrations that run at startup and `rosetta migrate` to run them on their own.
+- Session history is kept in the database, so it survives a restart and is shared by `rosetta serve`, `rosetta stdio` and every replica.
+- A record of every run: agent, protocol, session, caller, status, error, times, tokens and request ID, kept for `runs.retention` (30 days by default).
+- An admin API under `/admin/v1/`, described in `api/admin/openapi.yaml`: status, agents, API keys, runs, sessions and the audit log. Every resource has a `version` checked through `If-Match`, and every write adds an audit record.
+- Agents and API keys made through the admin API are served at once, and reach other replicas within two seconds.
+- On the first start, with no keys in the config or the database, rosetta makes an admin key and prints it once to stderr. `ROSETTA_BOOTSTRAP_ADMIN_KEY` sets it instead.
+- Reasoning tokens from transponder's `X-Usage-Reasoning-Tokens`, in run records and in `rosetta_tokens_total{direction="reasoning"}`.
+- `rosetta_requests_total`, `rosetta_request_duration_seconds` and `rosetta_inflight_requests`, the request metrics shared by the mothership projects.
+- `/readyz` reports the database.
+- For library users: `store.Open` for the SQL store, `server.Options.Runs` to record runs, `server.Options.Registry` with `registry.Set` to change agents while serving, and `server.Options.Keys` to change API keys while serving.
+
+### Changed
+
+- **Breaking:** `rosetta serve` with no config now keeps its state in `rosetta.db` in the working directory and turns auth on with a first admin key, instead of serving the echo agent to anyone. Pass the printed key, or set `auth.disabled: true` in a config file to keep it open on this machine.
+- **Breaking:** a config with auth on no longer needs `auth.api_keys`, since keys can come from the admin API.
+- `ROSETTA_*` environment variables apply without a config file too.
+- A 429 or 402 from transponder fails the run with its error code and `Retry-After`, such as `transponder: 429 Too Many Requests: rate_limited: slow down, retry after 7s`.
+- With `auth.disabled`, the admin API answers only on this machine, and refuses requests that came through a proxy.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added

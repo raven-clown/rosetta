@@ -440,7 +440,8 @@ Notes:
 - Inbound API keys are stored only as hashes. The full key is shown once, when it is created.
 - Expired sessions and runs older than `runs.retention` (default 30 days) are deleted by a background job.
 - With several replicas on Postgres, each replica checks the `revision` counter every five seconds and reloads agents and settings when it moves. Sessions and A2A tasks are shared, so a client can land on any replica. A2A cancellation across replicas relies on a2a-go's optimistic versioning of the task store.
-- The in-memory store implements the same interface. Tests and library users use it.
+- The in-memory store is SQLite in memory (`sqlite://:memory:`), so it runs the same queries as the file store. Library users who pass no store keep `session.Memory` for history and never get a file.
+- Run records are keyed by an ID rosetta makes. The protocol's run ID is a column of its own, since a client can choose it.
 
 ## 11. Admin API
 

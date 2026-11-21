@@ -15,7 +15,7 @@
 
 Write an agent once in Go. Serve it over MCP, A2A, ACP and AG-UI at the same time.
 
-> **Status: early, [v0.1.0](https://github.com/raven-clown/rosetta/releases/tag/v0.1.0).** Milestones 1 and 2 are done: the four protocol adapters, the `llm`, `a2a` and `echo` agent kinds, a config file, API keys, `/readyz` and metrics. Storage and the admin API come next, and the Go API may still change before v1. Watch the repository or pick an issue if you want to help shape it.
+> **Status: early, [v0.2.0](https://github.com/raven-clown/rosetta/releases/tag/v0.2.0).** The four protocol adapters, the `llm`, `a2a` and `echo` agent kinds, a config file, SQLite and Postgres storage, run history and an admin API are done. Limits and usage events come next, and the Go API may still change before v1. Watch the repository or pick an issue if you want to help shape it.
 
 ## How it works
 
@@ -37,26 +37,67 @@ Prebuilt binaries for Linux, macOS and Windows are planned.
 
 ## Try it
 
-The protocol layer works today, with a built-in echo agent:
+Start it with no config at all:
 
 ```bash
 go run github.com/raven-clown/rosetta/cmd/rosetta@latest serve
 ```
 
+rosetta keeps its state in `rosetta.db` in the working directory and prints an admin key to stderr on the first start. It is shown once, so copy it:
+
+```
+rosetta: created the first admin key. It is shown only this once:
+
+    rsk_...
+```
+
+Then talk to the built-in echo agent:
+
 ```bash
-curl -N -X POST localhost:8080/agui/echo -H 'Content-Type: application/json' \
+curl -N -X POST localhost:8080/agui/echo -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"threadId":"t1","runId":"r1","messages":[{"id":"u1","role":"user","content":"hello"}],"tools":[],"context":[],"state":null}'
 ```
 
-The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`. Without a config file, auth is off, so keep it on localhost.
+The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`. Set `ROSETTA_BOOTSTRAP_ADMIN_KEY` to choose the first key yourself, for Docker or CI.
 
-For real agents, write a config like [examples/rosetta.yaml](examples/rosetta.yaml) and start it with:
+Add an agent without writing a file:
+
+```bash
+curl -X POST localhost:8080/admin/v1/agents -H "Authorization: Bearer $KEY" \
+  -d '{"name":"helper","kind":"llm","model":"claude-sonnet-5-5","system_prompt":"Keep answers short."}'
+```
+
+For agents kept in git, write a config like [examples/rosetta.yaml](examples/rosetta.yaml) and start it with:
 
 ```bash
 ROSETTA_LOCAL_KEY=dev-key rosetta serve --config examples/rosetta.yaml
 ```
 
-Callers then send `Authorization: Bearer dev-key`. `/readyz` checks that transponder and airlock answer, and `/metrics` serves Prometheus metrics.
+Callers then send `Authorization: Bearer dev-key`. `/readyz` checks that the database, transponder and airlock answer, and `/metrics` serves Prometheus metrics.
+
+## Storage and the admin API
+
+State lives in SQL: session history, a record of every run, and the agents and API keys made through the admin API. SQLite is the default. For a team, or several replicas, point every instance at one Postgres database:
+
+```yaml
+storage:
+  dsn: postgres://rosetta:secret@db:5432/rosetta
+```
+
+Migrations run at startup, and `rosetta migrate --config rosetta.yaml` runs them on their own, for a separate deploy step. A change made through the admin API reaches every replica within two seconds.
+
+The admin API lives under `/admin/v1/` and is described in [api/admin/openapi.yaml](api/admin/openapi.yaml):
+
+| Endpoint | What |
+|---|---|
+| `GET /status` | version, uptime, storage, protocols and upstreams |
+| `GET, POST /agents`, `GET, PATCH, DELETE /agents/{name}` | agents from code, config and the API. Config and code agents are read-only |
+| `GET, POST /api-keys`, `DELETE /api-keys/{id}` | API keys. A new key is shown once, and only an `admin` key can manage them |
+| `GET /runs`, `GET /runs/{id}` | run history by agent, protocol, status and time |
+| `GET /sessions`, `GET, DELETE /sessions/{id}` | conversations and their messages |
+| `GET /audit` | every write made through the API, and who made it |
+
+Every resource has a `version`. Send it in `If-Match` on `PATCH` and `DELETE`, and a stale one gets 409 `version_conflict`, so two people editing at once never overwrite each other.
 
 ## Why
 
@@ -109,25 +150,24 @@ agents:
 
 **Hosted agent platforms** serve some of these protocols too, but keep parts of it behind a paid plan. rosetta has **no paid edition and no license key**. Roles, audit logs, SSO, Postgres clustering and the admin API all ship in the Apache-2.0 build. See the comparison, with links to each vendor's pricing page, in [the design](docs/design.md#everything-is-free).
 
-## What v0.1.0 has
+## What v0.2.0 has
 
 - One Go interface, `rosetta.Agent`, and four protocol adapters (MCP over Streamable HTTP and stdio, A2A over JSON-RPC and REST, ACP over stdio, AG-UI over SSE)
 - Built-in agent kinds: `llm` (a tool-calling loop over any OpenAI-compatible API), `a2a` (a remote A2A agent) and `echo`
-- Tools through any MCP server, models through any OpenAI-compatible endpoint
-- A YAML config with `${VAR}` expansion and `ROSETTA_*` overrides
-- API keys with `admin`, `member` and `viewer` roles, `/healthz`, `/readyz`, Prometheus `/metrics`, JSON logs
-
-Still to come before v1: SQLite and Postgres storage, and a JSON admin API under `/admin/v1/` with an OpenAPI file, ready for a web console.
+- Tools through any MCP server, models through any OpenAI-compatible endpoint, with input, output and reasoning tokens read from transponder
+- A YAML config with `${VAR}` expansion and `ROSETTA_*` overrides, or no file at all
+- SQLite and Postgres storage, a record of every run, `rosetta migrate`
+- An admin API for agents, API keys, runs, sessions and the audit log, with a first admin key on the first start
+- API keys with `admin`, `member` and `viewer` roles, `/healthz`, `/readyz`, Prometheus `/metrics` with the request metrics every mothership project shares, JSON logs
 
 ## Roadmap
 
-| Milestone | What |
+| Release | What |
 |---|---|
-| 1, in v0.1.0 | Core types, runner, the four adapters, echo agent, `rosetta serve` and `rosetta stdio` |
-| 2, in v0.1.0 | `llm` and `a2a` agent kinds, config file, API keys, health and metrics |
-| 3 | SQLite and Postgres storage, sessions, run history |
-| 4 | Admin API, first-run admin key, audit log, usage |
-| next | OIDC sign-in, OpenTelemetry traces, input-required flows, files and images, framework bridges |
+| v0.1.0 | Core types, runner, the four adapters, `llm`, `a2a` and `echo` agents, config file, API keys, health and metrics |
+| v0.2.0 | SQLite and Postgres storage, run history, admin API, first-run admin key, audit log |
+| v0.3.0 | Limits from shared profiles, usage events, settings and usage in the admin API, A2A tasks in SQL |
+| later | OIDC sign-in, OpenTelemetry traces, input-required flows, files and images, framework bridges |
 
 ## Part of mothership
 
