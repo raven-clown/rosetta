@@ -86,11 +86,11 @@ type builtAgent struct {
 // agents from code and config, plus agents and keys made through the
 // admin API.
 type live struct {
-	store   *store.Store
-	reg     *registry.Registry
-	keys    *server.Keys
-	fixed   []rosetta.Agent
-	info    []admin.FixedAgent
+	store  *store.Store
+	reg    *registry.Registry
+	keys   *server.Keys
+	fixed  []rosetta.Agent
+	info   []admin.FixedAgent
 	build  *builder
 	logger *slog.Logger
 	// reloading serializes reloads; agents and skipped belong to it. mu

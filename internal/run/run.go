@@ -171,10 +171,11 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 	}
 	text, usage, sinkErr := s.finish()
 	switch {
+	case ctx.Err() != nil:
+		// A client that hangs up also breaks the sink; that is a cancel.
+		return ctx.Err()
 	case sinkErr != nil:
 		return sinkErr
-	case ctx.Err() != nil:
-		return ctx.Err()
 	case runErr != nil:
 		return runErr
 	}

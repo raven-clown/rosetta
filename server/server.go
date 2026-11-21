@@ -108,6 +108,9 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	if reg != nil && len(agents) > 0 {
 		panic("server: pass agents or Options.Registry, not both")
 	}
+	if opts.Keys != nil && len(opts.APIKeys) > 0 {
+		panic("server: pass Options.APIKeys or Options.Keys, not both; NewKeys takes the static keys")
+	}
 	if reg == nil {
 		var err error
 		if reg, err = registry.New(agents...); err != nil {

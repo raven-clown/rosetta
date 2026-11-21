@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -22,8 +23,9 @@ const (
 	MCP StdioProtocol = "mcp"
 )
 
-// ServeStdio serves agents over in and out until ctx ends or the client
-// leaves. ACP serves the first agent, MCP serves all of them.
+// ServeStdio serves agents, or Options.Registry when set, over in and out
+// until ctx ends or the client leaves. ACP serves the first agent, MCP
+// serves all of them.
 func ServeStdio(ctx context.Context, p StdioProtocol, in io.Reader, out io.Writer, opts Options, agents ...rosetta.Agent) error {
 	opts = opts.withDefaults()
 	var adapter protocol.StdioAdapter
@@ -35,9 +37,15 @@ func ServeStdio(ctx context.Context, p StdioProtocol, in io.Reader, out io.Write
 	default:
 		return fmt.Errorf("server: unknown stdio protocol %q", p)
 	}
-	reg, err := registry.New(agents...)
-	if err != nil {
-		return err
+	reg := opts.Registry
+	if reg != nil && len(agents) > 0 {
+		return errors.New("server: pass agents or Options.Registry, not both")
+	}
+	if reg == nil {
+		var err error
+		if reg, err = registry.New(agents...); err != nil {
+			return err
+		}
 	}
 	runOpts := []run.Option{run.WithLogger(opts.Logger)}
 	if opts.Runs != nil {

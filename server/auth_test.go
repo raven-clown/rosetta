@@ -68,6 +68,15 @@ func TestEmptyKeySetIsNotOpen(t *testing.T) {
 	}
 }
 
+func TestKeysAndAPIKeysPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic when both Keys and APIKeys are set")
+		}
+	}()
+	New(Options{Keys: NewKeys(nil), APIKeys: []APIKey{{Name: "ci", Key: "k", Role: "member"}}}, echo.New("echo"))
+}
+
 func TestProtocolUnderAdminPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

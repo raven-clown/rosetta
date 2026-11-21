@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -390,6 +391,84 @@ func TestSlowAgentDoesNotDelayKeys(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("the new key did not work within two seconds")
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatal(t.Context().Err())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// TestStdioFollowsDatabase checks that rosetta stdio, serving every agent,
+// sees an agent made through the database after it started.
+func TestStdioFollowsDatabase(t *testing.T) {
+	dir := inTemp(t)
+	old := reloadEvery
+	reloadEvery = 20 * time.Millisecond
+	t.Cleanup(func() { reloadEvery = old })
+	path := writeConfig(t, "auth: {disabled: true}\nagents: [{name: fixed, kind: echo}]\n")
+	toAgentR, toAgentW := io.Pipe()
+	toClientR, toClientW := io.Pipe()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan int, 1)
+	go func() {
+		done <- run(ctx, []string{"stdio", "--protocol", "mcp", "--config", path}, toAgentR, toClientW, io.Discard)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		_ = toAgentW.Close()
+		<-done
+	})
+	lines := make(chan string, 64)
+	go func() {
+		sc := bufio.NewScanner(toClientR)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+	send := func(s string) {
+		if _, err := io.WriteString(toAgentW, s+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reply := func(id string) string {
+		t.Helper()
+		for {
+			select {
+			case l := <-lines:
+				if strings.Contains(l, `"id":`+id+`,`) || strings.Contains(l, `"id":`+id+`}`) {
+					return l
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("no reply to request %s", id)
+			}
+		}
+	}
+	send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`)
+	reply("1")
+	send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+
+	other, err := store.Open(t.Context(), "sqlite://"+filepath.Join(dir, "rosetta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Close() }()
+	if _, err := other.CreateAgent(t.Context(), store.Agent{Name: "late", Spec: json.RawMessage(`{"name":"late","kind":"echo"}`)},
+		store.Audit{Actor: "test", Action: "agent.create", Target: "late"}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for id := 2; ; id++ {
+		send(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/list"}`, id))
+		if l := reply(fmt.Sprint(id)); strings.Contains(l, `"name":"late"`) {
+			if !strings.Contains(l, `"name":"fixed"`) {
+				t.Errorf("tools = %s", l)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stdio never listed the agent made after it started")
 		}
 		select {
 		case <-t.Context().Done():

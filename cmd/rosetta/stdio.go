@@ -70,9 +70,11 @@ func stdioConfig(ctx context.Context, path string, pick names, logger *slog.Logg
 	opts := serverOptions(cfg, logger)
 	opts.APIKeys, opts.Checks = nil, nil
 	opts.Store, opts.Runs = st, st
-	all := l.reg.List()
 	if len(pick) == 0 {
-		return all, opts, st, nil
+		// Serving everything follows the database, as rosetta serve does.
+		opts.Registry = l.reg
+		go l.watch(ctx, reloadEvery)
+		return nil, opts, st, nil
 	}
 	agents := make([]rosetta.Agent, 0, len(pick))
 	for _, name := range pick {

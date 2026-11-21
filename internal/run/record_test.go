@@ -88,6 +88,23 @@ func TestRecordRuns(t *testing.T) {
 	}
 }
 
+func TestHangUpIsCancelled(t *testing.T) {
+	rec := &recorder{}
+	r := newRunner(nil)
+	WithRecorder(rec)(r)
+	ctx, cancel := context.WithCancel(t.Context())
+	sink := func(rosetta.Event) error {
+		cancel()
+		return errors.New("write: broken pipe")
+	}
+	err := r.Run(ctx, agentFunc(func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
+		return out.Text("hi")
+	}), &rosetta.Request{}, sink)
+	if !errors.Is(err, context.Canceled) || len(rec.runs) != 1 || rec.runs[0].Status != store.RunCancelled {
+		t.Errorf("err = %v, runs = %+v", err, rec.runs)
+	}
+}
+
 func TestRecordErrorDoesNotFailRun(t *testing.T) {
 	rec := &recorder{err: errors.New("disk full")}
 	obs := &observer{}
