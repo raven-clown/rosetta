@@ -6,6 +6,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Added
 
+- Each release attaches `rosetta` binaries for Linux, macOS and Windows on amd64 and arm64 with `checksums.txt`, and pushes a container image to `ghcr.io/raven-clown/rosetta` that runs `rosetta serve` on port 8080.
+- The image keeps its database at `/data/rosetta.db`. Mount a volume there to keep it across restarts.
 - SQLite and Postgres storage through `storage.dsn`, with migrations that run at startup and `rosetta migrate` to run them on their own.
 - Session history is kept in the database, so it survives a restart and is shared by `rosetta serve`, `rosetta stdio` and every replica.
 - A record of every run: agent, protocol, session, caller, status, error, times, tokens and request ID, kept for `runs.retention` (30 days by default).
