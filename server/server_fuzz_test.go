@@ -35,6 +35,12 @@ func FuzzHTTP(f *testing.F) {
 		if ctx.Err() != nil {
 			t.Fatalf("POST %s %q did not finish", req.URL.Path, body)
 		}
+		// mcp-go keeps a session per initialize until it is deleted, which a long fuzz run would pile up.
+		if id := rec.Header().Get("Mcp-Session-Id"); id != "" {
+			del := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/mcp", nil)
+			del.Header.Set("Mcp-Session-Id", id)
+			h.ServeHTTP(httptest.NewRecorder(), del)
+		}
 	})
 }
 
