@@ -47,11 +47,13 @@ type endpoint struct {
 	rest    http.Handler
 }
 
-// same reports whether a and b are the same agent value. Values of a type
-// that cannot be compared count as different, so they get a new handler.
+// same reports whether a and b are the same agent value. Values that
+// cannot be compared count as different, so they get a new handler. The
+// check is on the values, since a comparable struct type can still hold an
+// interface field with a slice in it.
 func same(a, b rosetta.Agent) bool {
-	ta := reflect.TypeOf(a)
-	if ta != reflect.TypeOf(b) || ta == nil || !ta.Comparable() {
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	if !va.IsValid() || va.Type() != vb.Type() || !va.Comparable() || !vb.Comparable() {
 		return false
 	}
 	return a == b
@@ -74,13 +76,15 @@ func (a *Adapter) Mount(mux *http.ServeMux, agents protocol.Registry, run protoc
 		}
 	}()
 	lookup := func(w http.ResponseWriter, r *http.Request) (rosetta.Agent, *endpoint, bool) {
+		// The agent is read under mu, so a request that saw an older agent
+		// cannot replace the handler, and the tasks, of a newer one.
+		mu.Lock()
+		defer mu.Unlock()
 		agent, ok := agents.Get(r.PathValue("agent"))
 		if !ok {
 			http.Error(w, "unknown agent", http.StatusNotFound)
 			return nil, nil, false
 		}
-		mu.Lock()
-		defer mu.Unlock()
 		name := agent.Card().Name
 		ep, ok := endpoints[name]
 		if !ok || !same(ep.agent, agent) {

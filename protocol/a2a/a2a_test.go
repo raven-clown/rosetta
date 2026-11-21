@@ -143,6 +143,11 @@ var (
 	timePattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T[^"]+"`)
 )
 
+type anyAgent struct{ v any }
+
+func (anyAgent) Card() rosetta.Card                                          { return rosetta.Card{Name: "s"} }
+func (anyAgent) Run(context.Context, *rosetta.Request, rosetta.Stream) error { return nil }
+
 type sliceAgent []string
 
 func (sliceAgent) Card() rosetta.Card                                          { return rosetta.Card{Name: "s"} }
@@ -157,6 +162,8 @@ func TestSame(t *testing.T) {
 		"same value":     {a, a, true},
 		"two values":     {a, echo.New("a"), false},
 		"not comparable": {sliceAgent{"x"}, sliceAgent{"x"}, false},
+		"slice in any":   {anyAgent{[]string{"x"}}, anyAgent{[]string{"x"}}, false},
+		"string in any":  {anyAgent{"x"}, anyAgent{"x"}, true},
 		"nil":            {nil, nil, false},
 	}
 	for name, tt := range tests {
