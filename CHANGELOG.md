@@ -28,6 +28,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - A 429 or 402 from transponder fails the run with its error code and `Retry-After`, such as `transponder: 429 Too Many Requests: rate_limited: slow down, retry after 7s`.
 - With `auth.disabled`, the admin API answers only on this machine: it refuses requests that came through a proxy, and requests whose `Host` or `Origin` is not a local name, so a web page cannot reach it. Admin writes need `Content-Type: application/json`.
 
+### Security
+
+- rosetta no longer follows a redirect from the MCP server at `airlock.url` to another scheme, host or port, so that server can't send rosetta's headers and key somewhere else (GO-2026-6911). A request to a URL that redirects that way, even from `http` to `https`, now fails: set `airlock.url` to the address it ends up at.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added
