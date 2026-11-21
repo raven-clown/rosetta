@@ -124,6 +124,16 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// a2aNeedsAdmin keeps remote agents to admin keys: they make the server
+// call out to a URL, and with forward_token they pass every caller's
+// token there.
+func a2aNeedsAdmin(r *http.Request, kinds ...string) error {
+	if slices.Contains(kinds, "a2a") && principal(r).Role != "admin" {
+		return forbidden("only an admin key can create or change a2a agents, since they call another server")
+	}
+	return nil
+}
+
 func (h *Handler) checkSpec(spec config.Agent) error {
 	if !registry.ValidName(spec.Name) {
 		return invalid("name", "name must be lowercase letters, digits, - or _, up to 64 characters")
@@ -140,6 +150,9 @@ func (h *Handler) createAgent(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if err := h.checkSpec(spec); err != nil {
+		return err
+	}
+	if err := a2aNeedsAdmin(r, spec.Kind); err != nil {
 		return err
 	}
 	if f, ok := h.fixed(spec.Name); ok {
@@ -206,6 +219,11 @@ func (h *Handler) updateAgent(w http.ResponseWriter, r *http.Request) error {
 	if err := h.checkSpec(spec); err != nil {
 		return err
 	}
+	var before config.Agent
+	_ = json.Unmarshal(cur.Spec, &before)
+	if err := a2aNeedsAdmin(r, before.Kind, spec.Kind); err != nil {
+		return err
+	}
 	raw, _ = json.Marshal(spec)
 	details, _ := json.Marshal(map[string][]string{"fields": fields})
 	a, err := h.opts.Store.UpdateAgent(r.Context(), store.Agent{Name: name, Spec: raw, UpdatedBy: actor(r)}, version,
@@ -237,6 +255,13 @@ func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) error {
 	version, err := ifMatch(r)
 	if err != nil {
 		return err
+	}
+	if cur, err := h.opts.Store.GetAgent(r.Context(), name); err == nil {
+		var spec config.Agent
+		_ = json.Unmarshal(cur.Spec, &spec)
+		if err := a2aNeedsAdmin(r, spec.Kind); err != nil {
+			return err
+		}
 	}
 	err = h.opts.Store.DeleteAgent(r.Context(), name, version, store.Audit{Actor: actor(r), Action: "agent.delete", Target: name})
 	if errors.Is(err, store.ErrNotFound) {

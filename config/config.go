@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -245,6 +246,9 @@ func (c *Config) checkAgent(prefix string, a Agent) error {
 	case "a2a":
 		if a.URL == "" {
 			return fieldErr(prefix+"url", "is required for kind a2a")
+		}
+		if u, err := url.Parse(a.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fieldErr(prefix+"url", "must be an http:// or https:// URL")
 		}
 	default:
 		return fieldErr(prefix+"kind", "must be llm, a2a or echo, not %q", a.Kind)

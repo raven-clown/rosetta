@@ -5,8 +5,9 @@ info:
   description: |
     Manage rosetta's agents and API keys, and read its runs, sessions and
     audit log. Every call needs `Authorization: Bearer <key>`. Reads take
-    any role. Agent and session writes need `admin` or `member`, and API
-    key writes need `admin`.
+    any role. Agent and session writes need `admin` or `member`. Agents of
+    kind `a2a` call another server and can forward the caller's token, so
+    creating, changing or deleting one needs `admin`, as do API key writes.
 
     Lists take `cursor` and `limit` (default 50, at most 500) and answer
     `{"items": [...], "next_cursor": "..."}`, with `next_cursor` absent on

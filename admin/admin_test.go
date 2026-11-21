@@ -224,6 +224,8 @@ func TestAgentErrors(t *testing.T) {
 		"viewer patch":     {"viewer", "PATCH", "/agents/taken", `{}`, nil, 403, "forbidden", ""},
 		"viewer delete":    {"viewer", "DELETE", "/agents/taken", "", nil, 403, "forbidden", ""},
 		"get fixed":        {"viewer", "GET", "/agents/helper", "", nil, 200, "", ""},
+		"member a2a":       {"member", "POST", "/agents", `{"name":"remote","kind":"a2a","url":"https://agents.example.com"}`, nil, 403, "forbidden", ""},
+		"member to a2a":    {"member", "PATCH", "/agents/taken", `{"kind":"a2a","url":"https://agents.example.com"}`, nil, 403, "forbidden", ""},
 		"list bad cursor":  {"viewer", "GET", "/agents?cursor=%25%25", "", nil, 400, "invalid", "cursor"},
 		"list limit large": {"viewer", "GET", "/agents?limit=501", "", nil, 400, "invalid", "limit"},
 		"list limit zero":  {"viewer", "GET", "/agents?limit=0", "", nil, 400, "invalid", "limit"},
@@ -238,6 +240,14 @@ func TestAgentErrors(t *testing.T) {
 	if n := len(e.do("viewer", "GET", "/audit", "").json(t)["items"].([]any)); n != 1 {
 		t.Errorf("audit records = %d, want only the one create", n)
 	}
+}
+
+func TestA2AAgentsNeedAdmin(t *testing.T) {
+	e := newEnv(t)
+	e.want(e.do("admin", "POST", "/agents", `{"name":"remote","kind":"a2a","url":"https://agents.example.com","forward_token":true}`), http.StatusCreated, "", "")
+	e.want(e.do("member", "PATCH", "/agents/remote", `{"description":"x"}`), http.StatusForbidden, "forbidden", "")
+	e.want(e.do("member", "DELETE", "/agents/remote", ""), http.StatusForbidden, "forbidden", "")
+	e.want(e.do("admin", "PATCH", "/agents/remote", `{"description":"x"}`), http.StatusOK, "", "")
 }
 
 func TestFixedAgentReadOnlyFlags(t *testing.T) {

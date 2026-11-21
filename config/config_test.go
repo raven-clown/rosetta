@@ -175,6 +175,9 @@ func TestValidateAgent(t *testing.T) {
 		"no model":    {cfg, Agent{Name: "a", Kind: "llm"}, "model"},
 		"no upstream": {noUpstream, Agent{Name: "a", Kind: "llm", Model: "m"}, "transponder.url"},
 		"bad kind":    {cfg, Agent{Name: "a", Kind: "x"}, "kind"},
+		"a2a file":    {cfg, Agent{Name: "a", Kind: "a2a", URL: "file:///etc/passwd"}, "url"},
+		"a2a no host": {cfg, Agent{Name: "a", Kind: "a2a", URL: "https://"}, "url"},
+		"a2a ok":      {cfg, Agent{Name: "a", Kind: "a2a", URL: "https://agents.example.com/x"}, ""},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
