@@ -55,6 +55,12 @@ rosetta: created the first admin key. It is shown only this once:
     rsk_...
 ```
 
+Keep it in a variable for the commands below:
+
+```bash
+export KEY='rsk_...'
+```
+
 Then talk to the built-in echo agent:
 
 ```bash
