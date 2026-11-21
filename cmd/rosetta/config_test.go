@@ -359,7 +359,9 @@ func TestSlowAgentDoesNotDelayKeys(t *testing.T) {
 	reloadEvery = 20 * time.Millisecond
 	t.Cleanup(func() { reloadEvery = old })
 	hang := make(chan struct{})
+	reached := make(chan struct{}, 8)
 	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		reached <- struct{}{}
 		select {
 		case <-hang:
 		case <-r.Context().Done():
@@ -378,6 +380,13 @@ func TestSlowAgentDoesNotDelayKeys(t *testing.T) {
 	spec := json.RawMessage(`{"name":"slow","kind":"a2a","url":"` + slow.URL + `"}`)
 	if _, err := other.CreateAgent(t.Context(), store.Agent{Name: "slow", Spec: spec}, store.Audit{Actor: "test", Action: "agent.create", Target: "slow"}); err != nil {
 		t.Fatal(err)
+	}
+	// The key is written only once a reload is stuck on the card, which is
+	// the order that used to hold the key back.
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reload never asked for the slow agent's card")
 	}
 	const key = "a-key-made-by-another-process-0123456789"
 	if _, err := other.CreateKey(t.Context(), store.Key{ID: "k_other", Name: "other", Role: "viewer", Hash: auth.Hash(key)},
