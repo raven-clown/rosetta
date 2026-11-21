@@ -214,13 +214,24 @@ func TestServeWithoutConfig(t *testing.T) {
 
 func TestBootstrapKeyFromEnv(t *testing.T) {
 	inTemp(t)
-	t.Setenv("ROSETTA_BOOTSTRAP_ADMIN_KEY", "chosen-admin-key")
+	const chosen = "chosen-admin-key-of-thirty-two-chars"
+	t.Setenv("ROSETTA_BOOTSTRAP_ADMIN_KEY", chosen)
 	s := startServe(t)
-	if strings.Contains(s.stderr.String(), "chosen-admin-key") || !strings.Contains(s.stderr.String(), "ROSETTA_BOOTSTRAP_ADMIN_KEY") {
+	if strings.Contains(s.stderr.String(), chosen) || !strings.Contains(s.stderr.String(), "ROSETTA_BOOTSTRAP_ADMIN_KEY") {
 		t.Errorf("stderr = %q", s.stderr.String())
 	}
-	if code, _ := get(t, "http://"+s.addr+"/admin/v1/status", "chosen-admin-key", ""); code != http.StatusOK {
+	if code, _ := get(t, "http://"+s.addr+"/admin/v1/status", chosen, ""); code != http.StatusOK {
 		t.Errorf("status with the chosen key: %d", code)
+	}
+}
+
+func TestBootstrapKeyTooShort(t *testing.T) {
+	inTemp(t)
+	t.Setenv("ROSETTA_BOOTSTRAP_ADMIN_KEY", "short-key")
+	var stderr syncBuffer
+	code := run(t.Context(), []string{"serve", "--listen", "127.0.0.1:0"}, strings.NewReader(""), io.Discard, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "at least 32 characters") || strings.Contains(stderr.String(), "short-key") {
+		t.Errorf("exit %d, stderr %q", code, stderr.String())
 	}
 }
 

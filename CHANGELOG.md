@@ -12,7 +12,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - An admin API under `/admin/v1/`, described in `api/admin/openapi.yaml`: status, agents, API keys, runs, sessions and the audit log. Every resource has a `version` checked through `If-Match`, and every write adds an audit record.
 - Agents and API keys made through the admin API are served at once, and reach other replicas within two seconds. `a2a` agents call another server and can forward the caller's token, so only an `admin` key can create, change or delete them.
 - An `a2a` agent's `url` must be an `http://` or `https://` URL, in the config file too.
-- On the first start, with no keys in the config or the database, rosetta makes an admin key and prints it once to stderr. `ROSETTA_BOOTSTRAP_ADMIN_KEY` sets it instead.
+- On the first start, with no keys in the config or the database, rosetta makes an admin key and prints it once to stderr. `ROSETTA_BOOTSTRAP_ADMIN_KEY` sets it instead, and must be at least 32 characters.
 - Reasoning tokens from transponder's `X-Usage-Reasoning-Tokens`, in run records and in `rosetta_tokens_total{direction="reasoning"}`.
 - `rosetta_requests_total`, `rosetta_request_duration_seconds` and `rosetta_inflight_requests`, the request metrics shared by the mothership projects.
 - `/readyz` reports the database.

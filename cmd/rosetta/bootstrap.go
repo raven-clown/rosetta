@@ -29,8 +29,11 @@ func bootstrap(ctx context.Context, st *store.Store, cfg *config.Config, stderr 
 		return err
 	}
 	key, given := os.Getenv(bootstrapEnv), true
-	if key == "" {
+	switch {
+	case key == "":
 		key, given = admin.NewKey(), false
+	case len(key) < auth.MinKeyLength:
+		return fmt.Errorf("%s must be at least %d characters, since it is stored as a fast hash; `openssl rand -base64 32` makes one", bootstrapEnv, auth.MinKeyLength)
 	}
 	details, _ := json.Marshal(map[string]string{"name": "bootstrap", "role": "admin"})
 	k := store.Key{ID: "k_bootstrap", Name: "bootstrap", Role: "admin", Prefix: admin.KeyPrefix(key), Hash: auth.Hash(key), CreatedBy: "bootstrap"}

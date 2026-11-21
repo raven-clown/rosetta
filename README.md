@@ -58,7 +58,7 @@ curl -N -X POST localhost:8080/agui/echo -H "Authorization: Bearer $KEY" -H 'Con
   -d '{"threadId":"t1","runId":"r1","messages":[{"id":"u1","role":"user","content":"hello"}],"tools":[],"context":[],"state":null}'
 ```
 
-The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`. Set `ROSETTA_BOOTSTRAP_ADMIN_KEY` to choose the first key yourself, for Docker or CI.
+The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhost:8080/.well-known/agent-card.json`, and talks ACP to an editor with `rosetta stdio --protocol acp`. Set `ROSETTA_BOOTSTRAP_ADMIN_KEY` to choose the first key yourself, for Docker or CI. It must be at least 32 characters, such as the output of `openssl rand -base64 32`.
 
 Add an agent without writing a file:
 

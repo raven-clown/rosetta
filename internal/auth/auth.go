@@ -4,7 +4,9 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/pbkdf2"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -52,8 +54,23 @@ func WithPrincipal(ctx context.Context, p Principal) context.Context {
 }
 
 type entry struct {
-	hash [sha256.Size]byte
+	hash []byte
 	p    Principal
+}
+
+// macKey is random per process. Static keys from the config are compared
+// as HMACs under it, so their digests mean nothing outside this process
+// and are never stored anywhere.
+var macKey = func() []byte {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return b
+}()
+
+func mac(s string) []byte {
+	h := hmac.New(sha256.New, macKey)
+	_, _ = h.Write([]byte(s))
+	return h.Sum(nil)
 }
 
 // Keys is the set of keys a server accepts. Static keys are fixed; stored
@@ -79,7 +96,13 @@ func callerID(key string) string {
 	return "key:" + hex.EncodeToString(b)
 }
 
-// Hash returns the hex SHA-256 of a key, as stored.
+// MinKeyLength is the shortest key a person may choose for storing, such
+// as ROSETTA_BOOTSTRAP_ADMIN_KEY.
+const MinKeyLength = 32
+
+// Hash returns the hex SHA-256 of a key, as stored. Stored keys are made
+// by rosetta from 32 random bytes, or are a bootstrap key of at least
+// MinKeyLength characters, so a fast hash is enough.
 func Hash(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
@@ -89,7 +112,7 @@ func Hash(key string) string {
 func NewKeys(static []Key) *Keys {
 	k := &Keys{}
 	for _, s := range static {
-		k.static = append(k.static, entry{hash: sha256.Sum256([]byte(s.Key)), p: Principal{ID: callerID(s.Key), Name: s.Name, Role: s.Role}})
+		k.static = append(k.static, entry{hash: mac(s.Key), p: Principal{ID: callerID(s.Key), Name: s.Name, Role: s.Role}})
 	}
 	empty := []entry{}
 	k.stored.Store(&empty)
@@ -103,14 +126,11 @@ func (k *Keys) SetStored(keys []store.Key) {
 		if !s.Revoked.IsZero() {
 			continue
 		}
-		var e entry
 		b, err := hex.DecodeString(s.Hash)
 		if err != nil || len(b) != sha256.Size {
 			continue
 		}
-		copy(e.hash[:], b)
-		e.p = Principal{ID: "key:" + s.ID, Name: s.Name, Role: s.Role}
-		out = append(out, e)
+		out = append(out, entry{hash: b, p: Principal{ID: "key:" + s.ID, Name: s.Name, Role: s.Role}})
 	}
 	k.stored.Store(&out)
 }
@@ -129,14 +149,18 @@ func (k *Keys) lookup(token string) (Principal, bool) {
 	if k == nil || token == "" {
 		return Principal{}, false
 	}
-	t := sha256.Sum256([]byte(token))
 	var found Principal
 	ok := false
-	for _, list := range [][]entry{k.static, *k.stored.Load()} {
-		for _, e := range list {
-			if subtle.ConstantTimeCompare(t[:], e.hash[:]) == 1 {
-				found, ok = e.p, true
-			}
+	staticMAC := mac(token)
+	for _, e := range k.static {
+		if subtle.ConstantTimeCompare(staticMAC, e.hash) == 1 {
+			found, ok = e.p, true
+		}
+	}
+	stored, _ := hex.DecodeString(Hash(token))
+	for _, e := range *k.stored.Load() {
+		if subtle.ConstantTimeCompare(stored, e.hash) == 1 {
+			found, ok = e.p, true
 		}
 	}
 	return found, ok
