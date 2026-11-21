@@ -95,13 +95,17 @@ type live struct {
 	logger *slog.Logger
 	// keying serializes key reloads, and reloading agent reloads; agents
 	// and skipped belong to reloading. Keys never wait behind an agent
-	// build, which can wait seconds on an a2a card. mu guards only rev.
+	// build, which can wait seconds on an a2a card. Each reload has its own
+	// revision, read before its data and set only once it succeeds, so a
+	// revoke can never be counted as seen before the keys were read. mu
+	// guards the two revisions.
 	keying    sync.Mutex
 	reloading sync.Mutex
 	agents    map[string]builtAgent
 	skipped   map[string]int64
 	mu        sync.Mutex
-	rev       int64
+	keyRev    int64
+	agentRev  int64
 }
 
 func newLive(st *store.Store, cfg *config.Config, fixed []rosetta.Agent, info []admin.FixedAgent, keys *server.Keys, logger *slog.Logger) (*live, error) {
@@ -129,11 +133,18 @@ func (l *live) reloadKeys(ctx context.Context) error {
 	}
 	l.keying.Lock()
 	defer l.keying.Unlock()
+	rev, err := l.store.Revision(ctx)
+	if err != nil {
+		return err
+	}
 	keys, err := l.store.ListKeys(ctx)
 	if err != nil {
 		return err
 	}
 	l.keys.SetStored(keys)
+	l.mu.Lock()
+	l.keyRev = rev
+	l.mu.Unlock()
 	return nil
 }
 
@@ -190,7 +201,7 @@ func (l *live) reloadAgents(ctx context.Context) error {
 	}
 	l.agents = built
 	l.mu.Lock()
-	l.rev = rev
+	l.agentRev = rev
 	l.mu.Unlock()
 	return nil
 }
@@ -202,10 +213,8 @@ func (l *live) reloadNow(ctx context.Context) {
 	}
 }
 
-// watch reloads when the revision moves, so a change made by another
-// process shows up here within one interval. Keys reload on every move.
-// Agents reload in the background, and a move seen while one is running
-// is picked up on a later tick, since rev only catches up when it ends.
+// watch checks for changes every interval, so a change made by another
+// process shows up here within one interval.
 func (l *live) watch(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
@@ -215,28 +224,35 @@ func (l *live) watch(ctx context.Context, every time.Duration) {
 			return
 		case <-t.C:
 		}
-		rev, err := l.store.Revision(ctx)
-		if err != nil {
-			l.logger.Error("checking for changes", "err", err)
-			continue
-		}
-		l.mu.Lock()
-		changed := rev != l.rev
-		l.mu.Unlock()
-		if !changed {
-			continue
-		}
+		l.check(ctx)
+	}
+}
+
+// check reloads keys when the revision is past the keys' revision, and
+// starts an agent reload in the background when it is past the agents'.
+// A failed reload leaves its revision behind, so the next check tries
+// again. A move seen while an agent reload runs is picked up later.
+func (l *live) check(ctx context.Context) {
+	rev, err := l.store.Revision(ctx)
+	if err != nil {
+		l.logger.Error("checking for changes", "err", err)
+		return
+	}
+	l.mu.Lock()
+	keysBehind, agentsBehind := rev != l.keyRev, rev != l.agentRev
+	l.mu.Unlock()
+	if keysBehind && l.keys != nil {
 		if err := l.reloadKeys(ctx); err != nil {
 			l.logger.Error("reloading keys", "err", err)
 		}
-		if l.reloading.TryLock() {
-			go func() {
-				defer l.reloading.Unlock()
-				if err := l.reloadAgents(ctx); err != nil && ctx.Err() == nil {
-					l.logger.Error("reloading agents", "err", err)
-				}
-			}()
-		}
+	}
+	if agentsBehind && l.reloading.TryLock() {
+		go func() {
+			defer l.reloading.Unlock()
+			if err := l.reloadAgents(ctx); err != nil && ctx.Err() == nil {
+				l.logger.Error("reloading agents", "err", err)
+			}
+		}()
 	}
 }
 
