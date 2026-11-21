@@ -66,12 +66,13 @@ func (a *Adapter) ServeStdio(ctx context.Context, agents protocol.Registry, run 
 func (a *Adapter) newServer(ctx context.Context, agents protocol.Registry, run protocol.Runner) *server.MCPServer {
 	srv := server.NewMCPServer(a.opts.Name, a.opts.Version, server.WithToolCapabilities(true))
 	srv.SetTools(tools(agents, run)...)
+	changes := agents.Changes()
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-agents.Changes():
+			case _, ok := <-changes:
 				if !ok {
 					return
 				}

@@ -41,6 +41,68 @@ func TestNewRejectsDuplicates(t *testing.T) {
 	}
 }
 
+func names(r *Registry) []string {
+	var out []string
+	for _, a := range r.List() {
+		out = append(out, a.Card().Name)
+	}
+	return out
+}
+
+func TestSet(t *testing.T) {
+	r, _ := New(agent("a"))
+	first, second := r.Changes(), r.Changes()
+	if err := r.Set(agent("b"), agent("c")); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(r); len(got) != 2 || got[0] != "b" || got[1] != "c" {
+		t.Errorf("list = %v", got)
+	}
+	if _, ok := r.Get("a"); ok {
+		t.Error("old agent still there")
+	}
+	for i, ch := range []<-chan struct{}{first, second} {
+		select {
+		case <-ch:
+		default:
+			t.Errorf("subscriber %d not signalled", i)
+		}
+	}
+}
+
+func TestSetRejectsBadList(t *testing.T) {
+	r, _ := New(agent("a"))
+	ch := r.Changes()
+	for name, list := range map[string][]rosetta.Agent{
+		"duplicate": {agent("x"), agent("x")},
+		"bad name":  {agent("Bad")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := r.Set(list...); err == nil {
+				t.Fatal("want an error")
+			}
+			if got := names(r); len(got) != 1 || got[0] != "a" {
+				t.Errorf("list changed to %v", got)
+			}
+		})
+	}
+	select {
+	case <-ch:
+		t.Error("signalled for a rejected list")
+	default:
+	}
+}
+
+func TestSlowSubscriberDoesNotBlock(t *testing.T) {
+	r, _ := New()
+	_ = r.Changes()
+	for range 5 {
+		if err := r.Set(agent("a")); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestGetAndList(t *testing.T) {
 	r, err := New(agent("b"), agent("a"))
 	if err != nil {

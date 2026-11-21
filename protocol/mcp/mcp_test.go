@@ -21,6 +21,7 @@ import (
 	"github.com/raven-clown/rosetta/internal/golden"
 	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/protocoltest"
+	"github.com/raven-clown/rosetta/registry"
 )
 
 func connect(t *testing.T, c *client.Client) {
@@ -94,6 +95,37 @@ func TestListTools(t *testing.T) {
 	}
 	if _, ok := schema.Properties["session_id"]; !ok {
 		t.Errorf("schema has no session_id: %+v", schema)
+	}
+}
+
+func TestToolsFollowRegistry(t *testing.T) {
+	reg, err := registry.New(protocoltest.ScriptedAgent("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := inProcess(t, reg)
+	changed := make(chan struct{}, 4)
+	c.OnNotification(func(n mcp.JSONRPCNotification) {
+		if n.Method == "notifications/tools/list_changed" {
+			changed <- struct{}{}
+		}
+	})
+	for _, want := range []string{"b", "c"} {
+		if err := reg.Set(protocoltest.ScriptedAgent(want)); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-changed:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no list_changed after setting %s", want)
+		}
+		res, err := c.ListTools(t.Context(), mcp.ListToolsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Tools) != 1 || res.Tools[0].Name != want {
+			t.Errorf("tools = %+v, want only %s", res.Tools, want)
+		}
 	}
 }
 
