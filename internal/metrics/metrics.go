@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,13 +15,18 @@ import (
 	"github.com/raven-clown/rosetta"
 )
 
-// Metrics counts runs, tokens and store errors on its own registry.
+// Metrics counts requests, runs, tokens and store errors on its own
+// registry. The request series use the names shared by every mothership
+// project.
 type Metrics struct {
 	reg         *prometheus.Registry
 	runs        *prometheus.CounterVec
 	duration    *prometheus.HistogramVec
 	tokens      *prometheus.CounterVec
 	storeErrors *prometheus.CounterVec
+	requests    *prometheus.CounterVec
+	reqDuration *prometheus.HistogramVec
+	inflight    prometheus.Gauge
 }
 
 // New returns Metrics with Go and process collectors registered.
@@ -40,11 +46,71 @@ func New() *Metrics {
 		storeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "rosetta_store_errors_total", Help: "Failed session store calls.",
 		}, []string{"op"}),
+		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rosetta_requests_total", Help: "HTTP requests by route pattern and status code.",
+		}, []string{"route", "code"}),
+		reqDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "rosetta_request_duration_seconds", Help: "How long HTTP requests took, streams included.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"route"}),
+		inflight: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "rosetta_inflight_requests", Help: "HTTP requests being served.",
+		}),
 	}
-	m.reg.MustRegister(m.runs, m.duration, m.tokens, m.storeErrors,
+	m.reg.MustRegister(m.runs, m.duration, m.tokens, m.storeErrors, m.requests, m.reqDuration, m.inflight,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	return m
 }
+
+// Middleware counts requests to next. The route label is the pattern mux
+// would pick, or "other", so paths with IDs in them never become labels.
+func (m *Metrics) Middleware(mux *http.ServeMux, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := "other"
+		if _, pattern := mux.Handler(r); pattern != "" {
+			route = pattern
+		}
+		m.inflight.Inc()
+		defer m.inflight.Dec()
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		if sw.status == 0 {
+			sw.status = http.StatusOK
+		}
+		m.requests.WithLabelValues(route, strconv.Itoa(sw.status)).Inc()
+		m.reqDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	if s.status == 0 {
+		s.status = code
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusWriter) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+// Flush keeps SSE streams working through the wrapper.
+func (s *statusWriter) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap lets http.ResponseController reach the real writer.
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // RunDone records a finished run.
 func (m *Metrics) RunDone(agent string, err error, d time.Duration, u rosetta.Usage) {

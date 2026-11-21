@@ -154,7 +154,8 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	if a2aPath == "" {
 		a2aPath = "/a2a"
 	}
-	return &Server{handler: auth.Middleware(keys, auth.Options{A2APath: a2aPath, AdminPath: adminPath, Open: open}, mux)}
+	authed := auth.Middleware(keys, auth.Options{A2APath: a2aPath, AdminPath: adminPath, Open: open}, mux)
+	return &Server{handler: m.Middleware(mux, authed)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.
