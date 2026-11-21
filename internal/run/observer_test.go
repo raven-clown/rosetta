@@ -62,10 +62,10 @@ func TestObserver(t *testing.T) {
 	}{
 		"completed with usage": {
 			run: func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
-				_ = out.Send(rosetta.Usage{InputTokens: 1, OutputTokens: 2})
-				return out.Send(rosetta.Usage{InputTokens: 10, OutputTokens: 20})
+				_ = out.Send(rosetta.Usage{InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3})
+				return out.Send(rosetta.Usage{InputTokens: 10, OutputTokens: 20, ReasoningTokens: 30})
 			},
-			usage: rosetta.Usage{InputTokens: 11, OutputTokens: 22},
+			usage: rosetta.Usage{InputTokens: 11, OutputTokens: 22, ReasoningTokens: 33},
 		},
 		"failed": {
 			run:     func(context.Context, *rosetta.Request, rosetta.Stream) error { return errNope },

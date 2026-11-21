@@ -92,6 +92,7 @@ func (s *sender) send(e rosetta.Event) error {
 	case rosetta.Usage:
 		s.usage.InputTokens += e.InputTokens
 		s.usage.OutputTokens += e.OutputTokens
+		s.usage.ReasoningTokens += e.ReasoningTokens
 	}
 	if err := s.sink(e); err != nil {
 		s.sinkErr = err

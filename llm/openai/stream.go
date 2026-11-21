@@ -33,8 +33,11 @@ type chunk struct {
 		} `json:"delta"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
+		PromptTokens            int `json:"prompt_tokens"`
+		CompletionTokens        int `json:"completion_tokens"`
+		CompletionTokensDetails struct {
+			ReasoningTokens int `json:"reasoning_tokens"`
+		} `json:"completion_tokens_details"`
 	} `json:"usage"`
 }
 
@@ -96,6 +99,7 @@ func (c *Client) Stream(ctx context.Context, req Request, h http.Header, onText 
 		}
 		if ch.Usage != nil {
 			res.InputTokens, res.OutputTokens = ch.Usage.PromptTokens, ch.Usage.CompletionTokens
+			res.ReasoningTokens = ch.Usage.CompletionTokensDetails.ReasoningTokens
 		}
 		for _, choice := range ch.Choices {
 			if t := choice.Delta.Content; t != "" {
@@ -128,6 +132,9 @@ func (c *Client) Stream(ctx context.Context, req Request, h http.Header, onText 
 	if in, out, ok := trailerUsage(resp.Trailer); ok {
 		res.InputTokens, res.OutputTokens = in, out
 	}
+	if n, err := strconv.Atoi(resp.Trailer.Get("X-Usage-Reasoning-Tokens")); err == nil {
+		res.ReasoningTokens = n
+	}
 	res.Message.Content = content.String()
 	res.Message.ToolCalls = calls
 	return res, nil
@@ -143,15 +150,32 @@ func statusError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	var e struct {
 		Error struct {
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
 	msg := strings.TrimSpace(string(b))
 	if json.Unmarshal(b, &e) == nil && e.Error.Message != "" {
 		msg = e.Error.Message
+		if e.Error.Code != "" {
+			msg = e.Error.Code + ": " + msg
+		}
 	}
+	var err error
 	if msg == "" {
-		return errors.New("transponder: " + resp.Status)
+		err = errors.New("transponder: " + resp.Status)
+	} else {
+		err = fmt.Errorf("transponder: %s: %s", resp.Status, msg)
 	}
-	return fmt.Errorf("transponder: %s: %s", resp.Status, msg)
+	if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusPaymentRequired {
+		return err
+	}
+	if s, perr := strconv.Atoi(resp.Header.Get("Retry-After")); perr == nil && s > 0 {
+		err = fmt.Errorf("%w, retry after %ds", err, s)
+	}
+	return limitError{err}
 }
+
+type limitError struct{ error }
+
+func (e limitError) Unwrap() []error { return []error{e.error, ErrLimited} }

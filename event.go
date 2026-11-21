@@ -52,8 +52,9 @@ type Artifact struct {
 
 // Usage reports tokens used by a model call.
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	InputTokens     int64
+	OutputTokens    int64
+	ReasoningTokens int64
 }
 
 // Extension carries a payload that only the named protocol adapter passes on.

@@ -63,6 +63,9 @@ func (m *Metrics) RunDone(agent string, err error, d time.Duration, u rosetta.Us
 	if u.OutputTokens > 0 {
 		m.tokens.WithLabelValues(agent, "output").Add(float64(u.OutputTokens))
 	}
+	if u.ReasoningTokens > 0 {
+		m.tokens.WithLabelValues(agent, "reasoning").Add(float64(u.ReasoningTokens))
+	}
 }
 
 // StoreError records a failed store call.

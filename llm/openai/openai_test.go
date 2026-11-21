@@ -17,6 +17,7 @@ type fake struct {
 	body    string
 	chunks  []string
 	trailer map[string]string
+	header  map[string]string
 	got     *http.Request
 	gotBody map[string]any
 }
@@ -25,6 +26,9 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.got = r
 	b, _ := io.ReadAll(r.Body)
 	_ = json.Unmarshal(b, &f.gotBody)
+	for k, v := range f.header {
+		w.Header().Set(k, v)
+	}
 	if f.status != 0 {
 		w.WriteHeader(f.status)
 		_, _ = io.WriteString(w, f.body)
@@ -97,16 +101,18 @@ func TestStreamToolCalls(t *testing.T) {
 }
 
 func TestStreamUsage(t *testing.T) {
-	usage := `{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":4}}`
+	usage := `{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":4,"completion_tokens_details":{"reasoning_tokens":2}}}`
+	trailers := map[string]string{"X-Usage-Input-Tokens": "10", "X-Usage-Output-Tokens": "20", "X-Usage-Reasoning-Tokens": "5"}
 	tests := map[string]struct {
-		chunks  []string
-		trailer map[string]string
-		in, out int
+		chunks             []string
+		trailer            map[string]string
+		in, out, reasoning int
 	}{
-		"trailers": {[]string{text("a"), "[DONE]"}, map[string]string{"X-Usage-Input-Tokens": "10", "X-Usage-Output-Tokens": "20"}, 10, 20},
-		"chunk":    {[]string{text("a"), usage, "[DONE]"}, nil, 3, 4},
-		"both":     {[]string{text("a"), usage, "[DONE]"}, map[string]string{"X-Usage-Input-Tokens": "10", "X-Usage-Output-Tokens": "20"}, 10, 20},
-		"none":     {[]string{text("a"), "[DONE]"}, nil, 0, 0},
+		"trailers":         {[]string{text("a"), "[DONE]"}, trailers, 10, 20, 5},
+		"chunk":            {[]string{text("a"), usage, "[DONE]"}, nil, 3, 4, 2},
+		"both":             {[]string{text("a"), usage, "[DONE]"}, trailers, 10, 20, 5},
+		"no reasoning hdr": {[]string{text("a"), usage, "[DONE]"}, map[string]string{"X-Usage-Input-Tokens": "10", "X-Usage-Output-Tokens": "20"}, 10, 20, 2},
+		"none":             {[]string{text("a"), "[DONE]"}, nil, 0, 0, 0},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -115,8 +121,8 @@ func TestStreamUsage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.InputTokens != tt.in || res.OutputTokens != tt.out {
-				t.Errorf("usage = %d/%d, want %d/%d", res.InputTokens, res.OutputTokens, tt.in, tt.out)
+			if res.InputTokens != tt.in || res.OutputTokens != tt.out || res.ReasoningTokens != tt.reasoning {
+				t.Errorf("usage = %d/%d/%d, want %d/%d/%d", res.InputTokens, res.OutputTokens, res.ReasoningTokens, tt.in, tt.out, tt.reasoning)
 			}
 		})
 	}
@@ -185,6 +191,21 @@ func TestStreamErrors(t *testing.T) {
 		"unauthorized": {
 			client: func(t *testing.T) *Client { return start(t, &fake{status: 401, body: "nope"}) },
 			want:   []string{"transponder:", "401"},
+		},
+		"rate limited": {
+			client: func(t *testing.T) *Client {
+				return start(t, &fake{status: 429, header: map[string]string{"Retry-After": "7"},
+					body: `{"error":{"code":"rate_limited","message":"slow down"}}`})
+			},
+			want: []string{"transponder:", "429", "rate_limited", "slow down", "retry after 7s"},
+			is:   ErrLimited,
+		},
+		"quota exceeded": {
+			client: func(t *testing.T) *Client {
+				return start(t, &fake{status: 402, body: `{"error":{"code":"quota_exceeded","message":"monthly allowance used"}}`})
+			},
+			want: []string{"transponder:", "402", "quota_exceeded", "monthly allowance used"},
+			is:   ErrLimited,
 		},
 		"broken json": {
 			client: func(t *testing.T) *Client { return start(t, &fake{chunks: []string{text("a"), "{oops"}}) },

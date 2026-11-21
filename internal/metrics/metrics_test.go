@@ -15,7 +15,7 @@ import (
 
 func TestMetrics(t *testing.T) {
 	m := New()
-	m.RunDone("helper", nil, 2*time.Second, rosetta.Usage{InputTokens: 3, OutputTokens: 4})
+	m.RunDone("helper", nil, 2*time.Second, rosetta.Usage{InputTokens: 3, OutputTokens: 4, ReasoningTokens: 5})
 	m.RunDone("helper", errors.New("nope"), time.Second, rosetta.Usage{})
 	m.RunDone("helper", context.Canceled, time.Second, rosetta.Usage{})
 	m.StoreError("append")
@@ -37,6 +37,7 @@ func TestMetrics(t *testing.T) {
 		`rosetta_run_duration_seconds_count{agent="helper"} 3`,
 		`rosetta_tokens_total{agent="helper",direction="input"} 3`,
 		`rosetta_tokens_total{agent="helper",direction="output"} 4`,
+		`rosetta_tokens_total{agent="helper",direction="reasoning"} 5`,
 		`rosetta_store_errors_total{op="append"} 1`,
 		`go_goroutines`,
 	} {

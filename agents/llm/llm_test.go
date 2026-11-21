@@ -125,6 +125,20 @@ func TestPlainAnswer(t *testing.T) {
 	}
 }
 
+func TestReasoningTokens(t *testing.T) {
+	r := answer("hi", 0, 0)
+	r.ReasoningTokens = 9
+	a := New(Config{Name: "helper", Model: "m"}, &fakeChat{replies: []openai.Response{r}}, nil)
+	events, err := runAgent(t, a, input("hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []rosetta.Event{rosetta.TextDelta{Text: "hi"}, rosetta.Usage{ReasoningTokens: 9}}
+	if !reflect.DeepEqual(events, want) {
+		t.Errorf("events = %+v", events)
+	}
+}
+
 func TestToolLoop(t *testing.T) {
 	chat := &fakeChat{replies: []openai.Response{toolCall(`{"q":"go"}`), answer("done", 5, 6)}}
 	tools := &fakeTools{}

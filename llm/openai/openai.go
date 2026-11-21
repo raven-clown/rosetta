@@ -4,6 +4,7 @@ package openai
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
@@ -70,10 +71,15 @@ type Request struct {
 
 // Response is the assembled reply and its token counts.
 type Response struct {
-	Message      Message
-	InputTokens  int
-	OutputTokens int
+	Message         Message
+	InputTokens     int
+	OutputTokens    int
+	ReasoningTokens int
 }
+
+// ErrLimited is wrapped by the error for a 429 or 402 answer, when
+// transponder or the provider refused the call because of a limit.
+var ErrLimited = errors.New("limited")
 
 // Client calls URL + "/chat/completions". APIKey is sent only when the
 // headers passed to Stream carry no Authorization.

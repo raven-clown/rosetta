@@ -98,8 +98,9 @@ func (a *agent) Run(ctx context.Context, req *rosetta.Request, out rosetta.Strea
 		if err != nil {
 			return err
 		}
-		if res.InputTokens != 0 || res.OutputTokens != 0 {
-			if err := out.Send(rosetta.Usage{InputTokens: int64(res.InputTokens), OutputTokens: int64(res.OutputTokens)}); err != nil {
+		if res.InputTokens != 0 || res.OutputTokens != 0 || res.ReasoningTokens != 0 {
+			u := rosetta.Usage{InputTokens: int64(res.InputTokens), OutputTokens: int64(res.OutputTokens), ReasoningTokens: int64(res.ReasoningTokens)}
+			if err := out.Send(u); err != nil {
 				return err
 			}
 		}
