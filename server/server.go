@@ -45,6 +45,26 @@ type Options struct {
 	Checks       []Check
 	APIKeys      []APIKey
 	Runs         RunRecorder
+
+	// Keys replaces APIKeys with a set the caller can update while serving.
+	Keys *Keys
+	// Admin is served under /admin/v1/ when set.
+	Admin http.Handler
+	// Registry replaces the agents passed to New with a list the caller
+	// can change while serving.
+	Registry *registry.Registry
+}
+
+// Keys is a set of API keys that can change while serving.
+type Keys = auth.Keys
+
+// NewKeys returns a key set holding static keys.
+func NewKeys(static []APIKey) *Keys {
+	keys := make([]auth.Key, len(static))
+	for i, k := range static {
+		keys[i] = auth.Key(k)
+	}
+	return auth.NewKeys(keys)
 }
 
 // RunRecorder saves a record of every run. *store.Store implements it.
@@ -69,18 +89,27 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
-// Server serves a fixed set of agents.
+const adminPath = "/admin/v1/"
+
+// Server serves agents over the HTTP protocols.
 type Server struct {
 	handler http.Handler
 }
 
-// New returns a Server for the agents. It panics when two agents share a
-// name or a name is not valid, since that is a programming error.
+// New returns a Server for the agents, or for Options.Registry when set.
+// It panics when two agents share a name, a name is not valid, or both a
+// registry and agents are given, since those are programming errors.
 func New(opts Options, agents ...rosetta.Agent) *Server {
 	opts = opts.withDefaults()
-	reg, err := registry.New(agents...)
-	if err != nil {
-		panic(err)
+	reg := opts.Registry
+	if reg != nil && len(agents) > 0 {
+		panic("server: pass agents or Options.Registry, not both")
+	}
+	if reg == nil {
+		var err error
+		if reg, err = registry.New(agents...); err != nil {
+			panic(err)
+		}
 	}
 	m := metrics.New()
 	runOpts := []run.Option{run.WithLogger(opts.Logger), run.WithObserver(m)}
@@ -111,15 +140,18 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 			panic(err)
 		}
 	}
-	keys := make([]auth.Key, len(opts.APIKeys))
-	for i, k := range opts.APIKeys {
-		keys[i] = auth.Key(k)
+	if opts.Admin != nil {
+		mux.Handle(adminPath, opts.Admin)
+	}
+	keys := opts.Keys
+	if keys == nil {
+		keys = NewKeys(opts.APIKeys)
 	}
 	a2aPath := p.A2A.Path
 	if a2aPath == "" {
 		a2aPath = "/a2a"
 	}
-	return &Server{handler: auth.Middleware(keys, a2aPath, mux)}
+	return &Server{handler: auth.Middleware(keys, auth.Options{A2APath: a2aPath, AdminPath: adminPath}, mux)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.

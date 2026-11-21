@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/raven-clown/rosetta/store"
 )
 
 func TestMiddleware(t *testing.T) {
@@ -16,7 +19,7 @@ func TestMiddleware(t *testing.T) {
 		{Name: "ci", Key: "member-key", Role: "member"},
 		{Name: "dash", Key: "viewer-key", Role: "viewer"},
 	}
-	h := Middleware(keys, "/a2a", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := Middleware(NewKeys(keys), Options{}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	tests := map[string]struct {
@@ -44,6 +47,9 @@ func TestMiddleware(t *testing.T) {
 		"card bad name":   {"GET", "/a2a/Echo/.well-known/agent-card.json", "", http.StatusUnauthorized, "unauthorized"},
 		"healthz post":    {"POST", "/healthz", "", http.StatusUnauthorized, "unauthorized"},
 		"healthz subpath": {"GET", "/healthz/x", "", http.StatusUnauthorized, "unauthorized"},
+		"admin api viewer": {"GET", "/admin/v1/agents", "Bearer viewer-key", http.StatusTeapot, ""},
+		"admin api no key": {"GET", "/admin/v1/agents", "", http.StatusUnauthorized, "unauthorized"},
+		"admin api wrong":  {"POST", "/admin/v1/agents", "Bearer nope", http.StatusUnauthorized, "unauthorized"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -93,7 +99,7 @@ func TestCallerHeader(t *testing.T) {
 			if tt.auth != "" {
 				req.Header.Set("Authorization", tt.auth)
 			}
-			Middleware(tt.keys, "/a2a", next).ServeHTTP(httptest.NewRecorder(), req)
+			Middleware(NewKeys(tt.keys), Options{}, next).ServeHTTP(httptest.NewRecorder(), req)
 			if got == nil {
 				t.Fatal("request did not reach the handler")
 			}
@@ -107,7 +113,7 @@ func TestCallerHeader(t *testing.T) {
 func TestCallerIDsDifferForSameName(t *testing.T) {
 	keys := []Key{{Name: "ci", Key: "k1", Role: "member"}, {Name: "ci", Key: "k2", Role: "member"}}
 	var ids []string
-	h := Middleware(keys, "/a2a", http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	h := Middleware(NewKeys(keys), Options{}, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		ids = append(ids, r.Header.Get(CallerHeader))
 	}))
 	for _, k := range []string{"k1", "k2"} {
@@ -117,6 +123,84 @@ func TestCallerIDsDifferForSameName(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] == ids[1] || strings.Contains(ids[0], "ci") {
 		t.Errorf("caller IDs = %q", ids)
+	}
+}
+
+func serveAs(t *testing.T, h http.Handler, method, path, token, remote string) int {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
+	if remote != "" {
+		req.RemoteAddr = remote
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestStoredKeys(t *testing.T) {
+	keys := NewKeys([]Key{{Name: "ops", Key: "static", Role: "admin"}})
+	var seen Principal
+	h := Middleware(keys, Options{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen, _ = FromContext(r.Context())
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	keys.SetStored([]store.Key{
+		{ID: "k1", Name: "ci", Role: "member", Hash: Hash("stored")},
+		{ID: "k2", Name: "old", Role: "member", Hash: Hash("revoked"), Revoked: time.Now()},
+		{ID: "k3", Name: "broken", Role: "member", Hash: "not hex"},
+	})
+	if keys.Len() != 2 {
+		t.Errorf("len = %d", keys.Len())
+	}
+	if code := serveAs(t, h, "POST", "/mcp", "stored", ""); code != http.StatusTeapot {
+		t.Errorf("stored key: %d", code)
+	}
+	if seen.ID != "key:k1" || seen.Name != "ci" || seen.Role != "member" {
+		t.Errorf("principal = %+v", seen)
+	}
+	if code := serveAs(t, h, "POST", "/mcp", "revoked", ""); code != http.StatusUnauthorized {
+		t.Errorf("revoked key: %d", code)
+	}
+	keys.SetStored(nil)
+	if code := serveAs(t, h, "POST", "/mcp", "stored", ""); code != http.StatusUnauthorized {
+		t.Errorf("key after removal: %d", code)
+	}
+	if code := serveAs(t, h, "POST", "/mcp", "static", ""); code != http.StatusTeapot || seen.Name != "ops" || seen.Role != "admin" {
+		t.Errorf("static key: %d, %+v", code, seen)
+	}
+}
+
+func TestNoKeys(t *testing.T) {
+	var seen Principal
+	var reached bool
+	h := Middleware(nil, Options{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen, reached = FromContext(r.Context())
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	tests := map[string]struct {
+		path, remote string
+		code         int
+		admin        bool
+	}{
+		"protocol open":     {"/mcp", "203.0.113.9:4000", http.StatusTeapot, false},
+		"admin loopback v4": {"/admin/v1/status", "127.0.0.1:4000", http.StatusTeapot, true},
+		"admin loopback v6": {"/admin/v1/status", "[::1]:4000", http.StatusTeapot, true},
+		"admin remote":      {"/admin/v1/status", "203.0.113.9:4000", http.StatusForbidden, false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			seen, reached = Principal{}, false
+			code := serveAs(t, h, "GET", tt.path, "", tt.remote)
+			if code != tt.code {
+				t.Fatalf("status %d, want %d", code, tt.code)
+			}
+			if tt.admin && (!reached || seen.Role != "admin") {
+				t.Errorf("principal = %+v", seen)
+			}
+		})
 	}
 }
 

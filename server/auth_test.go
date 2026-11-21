@@ -1,13 +1,74 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/raven-clown/rosetta/agents/echo"
+	"github.com/raven-clown/rosetta/internal/auth"
+	"github.com/raven-clown/rosetta/registry"
+	"github.com/raven-clown/rosetta/store"
 )
+
+func authed(t *testing.T, h http.Handler, method, path, key string) int {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(aguiBody))
+	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestKeysAdminAndRegistry(t *testing.T) {
+	keys := NewKeys([]APIKey{{Name: "dash", Key: "viewer-key", Role: "viewer"}})
+	keys.SetStored([]store.Key{{ID: "k1", Name: "ci", Role: "member", Hash: auth.Hash("stored-key")}})
+	reg, _ := registry.New(echo.New("echo"))
+	admin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		_, _ = io.WriteString(w, p.Name)
+	})
+	h := New(Options{Keys: keys, Admin: admin, Registry: reg}).Handler()
+
+	if code := authed(t, h, http.MethodPost, "/agui/echo", "stored-key"); code != http.StatusOK {
+		t.Errorf("stored key run: %d", code)
+	}
+	if code := authed(t, h, http.MethodPost, "/agui/echo", "viewer-key"); code != http.StatusForbidden {
+		t.Errorf("viewer run: %d", code)
+	}
+	if code := authed(t, h, http.MethodGet, "/admin/v1/agents", "viewer-key"); code != http.StatusOK {
+		t.Errorf("viewer admin read: %d", code)
+	}
+	if code := authed(t, h, http.MethodGet, "/admin/v1/agents", ""); code != http.StatusUnauthorized {
+		t.Errorf("admin without key: %d", code)
+	}
+	_ = reg.Set(echo.New("other"))
+	if code := authed(t, h, http.MethodPost, "/agui/other", "stored-key"); code != http.StatusOK {
+		t.Errorf("agent added at runtime: %d", code)
+	}
+	if code := authed(t, h, http.MethodPost, "/agui/echo", "stored-key"); code != http.StatusNotFound {
+		t.Errorf("agent removed at runtime: %d", code)
+	}
+	keys.SetStored(nil)
+	if code := authed(t, h, http.MethodPost, "/agui/other", "stored-key"); code != http.StatusUnauthorized {
+		t.Errorf("revoked key: %d", code)
+	}
+}
+
+func TestRegistryAndAgentsPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic")
+		}
+	}()
+	reg, _ := registry.New()
+	New(Options{Registry: reg}, echo.New("echo"))
+}
 
 func TestAPIKeys(t *testing.T) {
 	h := New(Options{APIKeys: []APIKey{{Name: "ci", Key: "k1", Role: "member"}}}, echo.New("echo")).Handler()
