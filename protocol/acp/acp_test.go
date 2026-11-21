@@ -136,6 +136,24 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+func TestFailedGolden(t *testing.T) {
+	conn, rec := start(t, protocoltest.Failing("failing"))
+	id := newSession(t, conn)
+	_, err := prompt(t.Context(), conn, id, "hi")
+	var reqErr *acpsdk.RequestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("err = %v, want a JSON-RPC error", err)
+	}
+	var lines bytes.Buffer
+	for _, u := range rec.all() {
+		b, _ := json.Marshal(u)
+		lines.Write(append(b, '\n'))
+	}
+	b, _ := json.Marshal(reqErr)
+	lines.Write(append(b, '\n'))
+	golden.Assert(t, "failed", bytes.ReplaceAll(lines.Bytes(), []byte(id), []byte("SESSION")))
+}
+
 func TestPromptGolden(t *testing.T) {
 	conn, rec := start(t, protocoltest.ScriptedAgent("scripted", protocoltest.AllEvents()...))
 	id := newSession(t, conn)

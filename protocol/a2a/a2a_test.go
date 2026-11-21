@@ -136,6 +136,26 @@ var (
 	timePattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T[^"]+"`)
 )
 
+func TestFailedGolden(t *testing.T) {
+	c := dial(t, serve(t, protocoltest.Failing("failing")), "failing")
+	var lines bytes.Buffer
+	var last a2a.Event
+	for ev, err := range c.SendStreamingMessage(t.Context(), message("ctx-1", a2a.NewTextPart("hi"))) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = ev
+		b, _ := json.Marshal(ev)
+		lines.Write(append(b, '\n'))
+	}
+	if u, ok := last.(*a2a.TaskStatusUpdateEvent); !ok || u.Status.State != a2a.TaskStateFailed {
+		t.Errorf("last event = %#v, want a failed status", last)
+	}
+	out := uuidPattern.ReplaceAll(lines.Bytes(), []byte("ID"))
+	out = timePattern.ReplaceAll(out, []byte(`"T"`))
+	golden.Assert(t, "failed", out)
+}
+
 func TestStreamGolden(t *testing.T) {
 	c := dial(t, serve(t, protocoltest.ScriptedAgent("scripted", protocoltest.AllEvents()...)), "scripted")
 	var lines bytes.Buffer

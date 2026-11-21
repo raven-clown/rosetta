@@ -1,0 +1,15 @@
+id: RUN_STARTED_1793750400000
+data: {"type":"RUN_STARTED","timestamp":1793750400000,"threadId":"t1","runId":"r1"}
+
+id: TEXT_MESSAGE_START_1793750400000
+data: {"type":"TEXT_MESSAGE_START","timestamp":1793750400000,"messageId":"id-1","role":"assistant"}
+
+id: TEXT_MESSAGE_CONTENT_1793750400000
+data: {"type":"TEXT_MESSAGE_CONTENT","timestamp":1793750400000,"messageId":"id-1","delta":"partial"}
+
+id: TEXT_MESSAGE_END_1793750400000
+data: {"type":"TEXT_MESSAGE_END","timestamp":1793750400000,"messageId":"id-1"}
+
+id: RUN_ERROR_1793750400000
+data: {"type":"RUN_ERROR","timestamp":1793750400000,"message":"upstream said no","runId":"r1"}
+

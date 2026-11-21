@@ -4,6 +4,7 @@ package protocoltest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +28,21 @@ func ScriptedAgent(name string, events ...rosetta.Event) rosetta.Agent {
 				}
 			}
 			return nil
+		})
+}
+
+// ErrFailing is what the Failing agent returns.
+var ErrFailing = errors.New("upstream said no")
+
+// Failing returns an agent that sends one text delta and then fails with
+// ErrFailing, for pinning each protocol's failure shape.
+func Failing(name string) rosetta.Agent {
+	return rosetta.Func(rosetta.Card{Name: name, Description: "Failing agent " + name},
+		func(_ context.Context, _ *rosetta.Request, out rosetta.Stream) error {
+			if err := out.Text("partial"); err != nil {
+				return err
+			}
+			return ErrFailing
 		})
 }
 

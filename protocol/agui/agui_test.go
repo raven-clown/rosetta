@@ -70,6 +70,15 @@ func eventTypes(t *testing.T, body string) []string {
 	return out
 }
 
+func TestFailedGolden(t *testing.T) {
+	h := handler(t, protocoltest.Failing("failing"))
+	rec := post(t, h, "/agui/failing", input(user("u1", "hi")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	golden.Assert(t, "failed", rec.Body.Bytes())
+}
+
 func TestAllEventsGolden(t *testing.T) {
 	h := handler(t, protocoltest.ScriptedAgent("scripted", protocoltest.AllEvents()...))
 	rec := post(t, h, "/agui/scripted", input(user("u1", "hi")))

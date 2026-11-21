@@ -92,6 +92,16 @@ func TestListTools(t *testing.T) {
 	}
 }
 
+func TestFailedGolden(t *testing.T) {
+	c := inProcess(t, protocoltest.StaticRegistry(protocoltest.Failing("failing")))
+	res := call(t, c, "failing", map[string]any{"message": "hi"}, nil)
+	if !res.IsError {
+		t.Errorf("result = %+v, want isError", res)
+	}
+	b, _ := json.Marshal(res)
+	golden.Assert(t, "failed", append(b, '\n'))
+}
+
 func TestCallTool(t *testing.T) {
 	c := inProcess(t, protocoltest.StaticRegistry(echo.New("echo")))
 	res := call(t, c, "echo", map[string]any{"message": "hello"}, nil)
