@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed migrations
@@ -18,6 +20,8 @@ var migrations embed.FS
 // lockID is the Postgres advisory lock held while migrating, so replicas
 // that start together do not apply the same migration twice.
 const lockID = 0x726f7365747461
+
+const unlockTimeout = 5 * time.Second
 
 type migration struct {
 	version int
@@ -74,7 +78,15 @@ func (s *Store) Migrate(ctx context.Context) (int, error) {
 		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, lockID); err != nil {
 			return 0, fmt.Errorf("store: taking the migration lock: %w", err)
 		}
-		defer func() { _, _ = conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, lockID) }()
+		defer func() {
+			unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unlockTimeout)
+			defer cancel()
+			if _, err := conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock($1)`, lockID); err != nil {
+				// A session that may still hold the lock must not go back
+				// to the pool; ErrBadConn makes Close drop it.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			}
+		}()
 	}
 	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at BIGINT NOT NULL)`); err != nil {
 		return 0, fmt.Errorf("store: migrating: %w", err)

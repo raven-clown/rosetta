@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -60,7 +61,7 @@ func open(dsn string) (*Store, error) {
 	case strings.HasPrefix(dsn, "sqlite://"):
 		path := strings.TrimPrefix(dsn, "sqlite://")
 		if path == "" {
-			return nil, fmt.Errorf("store: %q names no file", dsn)
+			return nil, errors.New("store: sqlite:// names no file")
 		}
 		pragmas := "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
 		if path == ":memory:" {
@@ -77,32 +78,26 @@ func open(dsn string) (*Store, error) {
 			}
 		}
 		// The file holds key hashes and conversations, so only its owner may
-		// read it. SQLite gives the -wal and -shm files the same mode.
-		f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_RDWR, 0o600)
+		// read it, even when it was made by something else. SQLite gives the
+		// -wal and -shm files the same mode.
+		path = filepath.Clean(path)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 		if err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		_ = f.Close()
+		if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o077 != 0 {
+			if err := os.Chmod(path, 0o600); err != nil {
+				return nil, fmt.Errorf("store: %s can be read by other users and could not be made private: %w", path, err)
+			}
+		}
 		db, err := sql.Open("sqlite", "file:"+url.PathEscape(path)+"?"+pragmas+"&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 		if err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		return &Store{db: db, dialect: SQLite}, nil
 	}
-	return nil, fmt.Errorf("store: %q is not a sqlite:// or postgres:// URL", redact(dsn))
-}
-
-// redact hides a password in a DSN for error messages. A DSN that does not
-// parse is not shown at all.
-func redact(dsn string) string {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return "<unparseable dsn>"
-	}
-	if u.User != nil {
-		if _, ok := u.User.Password(); ok {
-			u.User = url.UserPassword(u.User.Username(), "xxxxx")
-		}
-	}
-	return u.String()
+	// The DSN is not echoed: it may hold a password, in the user part or in
+	// the query.
+	return nil, errors.New("store: the DSN must start with sqlite://, postgres:// or postgresql://")
 }

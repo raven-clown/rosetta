@@ -84,9 +84,13 @@ func (s *Store) RevokeKey(ctx context.Context, id string, version int64, au Audi
 		if err := s.checkVersion(ctx, tx, `SELECT version FROM api_keys WHERE org_id = ? AND id = ?`, version, org, id); err != nil {
 			return err
 		}
-		if _, err := s.exec(ctx, tx, `UPDATE api_keys SET revoked_at = ?, version = version + 1 WHERE org_id = ? AND id = ? AND revoked_at = 0`,
-			nanos(s.now()), org, id); err != nil {
+		res, err := s.exec(ctx, tx, `UPDATE api_keys SET revoked_at = ?, version = version + 1 WHERE org_id = ? AND id = ? AND revoked_at = 0`,
+			nanos(s.now()), org, id)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil
 		}
 		if err := s.bump(ctx, tx); err != nil {
 			return err

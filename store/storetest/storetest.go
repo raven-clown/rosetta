@@ -60,6 +60,8 @@ func Run(t *testing.T, open Opener) {
 		"bad cursor":          badCursor,
 		"concurrent if-match": concurrentIfMatch,
 		"concurrent append":   concurrentAppend,
+		"bad part data":       badPartData,
+		"revoke twice":        revokeTwice,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, open) })
@@ -575,6 +577,43 @@ func concurrentAppend(t *testing.T, open Opener) {
 	}
 	if got, _ := s.History(ctx, "a", "anon:busy"); len(got) != n {
 		t.Errorf("history has %d messages, want %d", len(got), n)
+	}
+}
+
+// badPartData checks that a message that cannot be encoded fails the
+// append and leaves the history as it was.
+func badPartData(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	_ = s.Append(ctx, "a", "anon:s", user("kept"))
+	bad := rosetta.Message{Role: rosetta.RoleAgent, Parts: []rosetta.Part{{Data: json.RawMessage(`{`)}}}
+	if err := s.Append(ctx, "a", "anon:s", user("lost"), bad); err == nil {
+		t.Fatal("append with broken JSON data succeeded")
+	}
+	got, err := s.History(ctx, "a", "anon:s")
+	if err != nil || !reflect.DeepEqual(got, []rosetta.Message{user("kept")}) {
+		t.Errorf("history = %+v, %v", got, err)
+	}
+}
+
+// revokeTwice checks that revoking a revoked key records nothing more.
+func revokeTwice(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	k, _ := s.CreateKey(ctx, store.Key{Name: "k", Role: "member", Hash: "h"}, au("api_key.create", "k"))
+	if err := s.RevokeKey(ctx, k.ID, 0, au("api_key.revoke", k.ID)); err != nil {
+		t.Fatal(err)
+	}
+	rev, _ := s.Revision(ctx)
+	if err := s.RevokeKey(ctx, k.ID, 0, au("api_key.revoke", k.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := s.Revision(ctx); again != rev {
+		t.Errorf("second revoke moved the revision from %d to %d", rev, again)
+	}
+	list, _, _ := s.ListAudit(ctx, store.AuditFilter{Action: "api_key.revoke"}, store.Page{})
+	if len(list) != 1 {
+		t.Errorf("revoke audit records = %d, want 1", len(list))
 	}
 }
 

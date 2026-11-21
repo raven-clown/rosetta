@@ -16,13 +16,13 @@ type wirePart struct {
 	Data json.RawMessage `json:"data,omitempty"`
 }
 
-func encodeParts(parts []rosetta.Part) string {
+func encodeParts(parts []rosetta.Part) (string, error) {
 	w := make([]wirePart, len(parts))
 	for i, p := range parts {
 		w[i] = wirePart(p)
 	}
-	b, _ := json.Marshal(w)
-	return string(b)
+	b, err := json.Marshal(w)
+	return string(b), err
 }
 
 func decodeParts(s string) ([]rosetta.Part, error) {
@@ -63,11 +63,16 @@ func (s *Store) History(ctx context.Context, agent, key string) ([]rosetta.Messa
 	if err != nil {
 		return nil, fmt.Errorf("store: loading history: %w", err)
 	}
-	return s.messages(ctx, id)
+	return s.messages(ctx, s.db, id)
 }
 
-func (s *Store) messages(ctx context.Context, sessionID string) ([]rosetta.Message, error) {
-	rows, err := s.db.QueryContext(ctx, s.q(`SELECT role, parts FROM messages WHERE org_id = ? AND session_id = ? ORDER BY seq`), org, sessionID)
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func (s *Store) messages(ctx context.Context, db querier, sessionID string) ([]rosetta.Message, error) {
+	rows, err := db.QueryContext(ctx, s.q(`SELECT role, parts FROM messages WHERE org_id = ? AND session_id = ? ORDER BY seq`), org, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("store: loading history: %w", err)
 	}
@@ -92,6 +97,13 @@ func (s *Store) messages(ctx context.Context, sessionID string) ([]rosetta.Messa
 func (s *Store) Append(ctx context.Context, agent, key string, msgs ...rosetta.Message) error {
 	now := s.now()
 	caller, clientID := splitKey(key)
+	encoded := make([]string, len(msgs))
+	for i, m := range msgs {
+		var err error
+		if encoded[i], err = encodeParts(m.Parts); err != nil {
+			return fmt.Errorf("store: saving history: message %d: %w", i, err)
+		}
+	}
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		if _, err := s.exec(ctx, tx, `DELETE FROM sessions WHERE org_id = ? AND agent = ? AND session_key = ? AND expires_at < ?`,
 			org, agent, key, nanos(now)); err != nil {
@@ -111,10 +123,10 @@ func (s *Store) Append(ctx context.Context, agent, key string, msgs ...rosetta.M
 		if err := tx.QueryRowContext(ctx, s.q(`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE org_id = ? AND session_id = ?`), org, id).Scan(&last); err != nil {
 			return err
 		}
-		for _, m := range msgs {
+		for i, m := range msgs {
 			last++
 			if _, err := s.exec(ctx, tx, `INSERT INTO messages (session_id, org_id, seq, role, parts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-				id, org, last, string(m.Role), encodeParts(m.Parts), nanos(now)); err != nil {
+				id, org, last, string(m.Role), encoded[i], nanos(now)); err != nil {
 				return err
 			}
 		}
@@ -184,9 +196,19 @@ func (s *Store) ListSessions(ctx context.Context, f SessionFilter, p Page) ([]Se
 	return out, cur, nil
 }
 
-// GetSession returns one live session and its messages.
+// GetSession returns one live session and its messages, read from one
+// snapshot so the count and version match the messages.
 func (s *Store) GetSession(ctx context.Context, id string) (Session, []rosetta.Message, error) {
-	se, err := scanSession(s.db.QueryRowContext(ctx, s.q(`SELECT `+sessionCols+` FROM sessions WHERE org_id = ? AND id = ? AND expires_at >= ?`),
+	var opts *sql.TxOptions
+	if s.dialect == Postgres {
+		opts = &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	}
+	tx, err := s.db.BeginTx(ctx, opts)
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("store: loading session: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	se, err := scanSession(tx.QueryRowContext(ctx, s.q(`SELECT `+sessionCols+` FROM sessions WHERE org_id = ? AND id = ? AND expires_at >= ?`),
 		org, id, nanos(s.now())))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, nil, ErrNotFound
@@ -194,7 +216,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (Session, []rosetta.M
 	if err != nil {
 		return Session{}, nil, fmt.Errorf("store: loading session: %w", err)
 	}
-	msgs, err := s.messages(ctx, id)
+	msgs, err := s.messages(ctx, tx, id)
 	return se, msgs, err
 }
 

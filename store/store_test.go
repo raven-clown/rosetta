@@ -43,10 +43,11 @@ func TestOpenErrors(t *testing.T) {
 		dsn  string
 		want string
 	}{
-		"unknown scheme": {"mysql://x", "not a sqlite:// or postgres:// URL"},
+		"unknown scheme": {"mysql://x", "must start with sqlite://"},
 		"no path":        {"sqlite://", "names no file"},
-		"password":       {"redis://u:secret@h/db", "xxxxx"},
-		"unparseable":    {"redis://u:secret@h:bad port/db", "<unparseable dsn>"},
+		"password":       {"redis://u:secret@h/db", "must start with sqlite://"},
+		"password query": {"postgress://h/db?password=secret", "must start with sqlite://"},
+		"unparseable":    {"redis://u:secret@h:bad port/db", "must start with sqlite://"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -78,14 +79,24 @@ func TestFileMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no Unix file modes")
 	}
-	path := filepath.Join(t.TempDir(), "rosetta.db")
-	openWith(t, "sqlite://"+path, store.Options{})
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode := fi.Mode().Perm(); mode != 0o600 {
-		t.Errorf("mode = %o, want 600", mode)
+	for name, before := range map[string]os.FileMode{"new file": 0, "readable by others": 0o644} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "rosetta.db")
+			if before != 0 {
+				if err := os.WriteFile(path, nil, before); err != nil {
+					t.Fatal(err)
+				}
+				_ = os.Chmod(path, before)
+			}
+			openWith(t, "sqlite://"+path, store.Options{})
+			fi, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode := fi.Mode().Perm(); mode != 0o600 {
+				t.Errorf("mode = %o, want 600", mode)
+			}
+		})
 	}
 }
 
