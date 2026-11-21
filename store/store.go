@@ -74,10 +74,12 @@ type SessionFilter struct {
 	Agent string
 }
 
-// Run is the record of one agent run.
+// Run is the record of one agent run. ID is made by rosetta; RunID is the
+// protocol's run ID, which a client may choose, so it is not unique.
 type Run struct {
 	ID              string
 	Agent           string
+	RunID           string
 	Protocol        string
 	SessionID       string
 	Caller          string

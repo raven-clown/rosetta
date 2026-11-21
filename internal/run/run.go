@@ -191,7 +191,7 @@ func (r *Runner) record(ctx context.Context, agent string, req *rosetta.Request,
 		return
 	}
 	rec := store.Run{
-		ID: req.RunID, Agent: agent, Protocol: protocol.NameFrom(ctx), SessionID: req.SessionID,
+		ID: r.ids(), Agent: agent, RunID: req.RunID, Protocol: protocol.NameFrom(ctx), SessionID: req.SessionID,
 		Caller: req.Caller.ID, Status: store.RunCompleted, Started: start, Ended: time.Now(),
 		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, ReasoningTokens: u.ReasoningTokens,
 		RequestID: req.Caller.RequestID,

@@ -35,6 +35,7 @@ CREATE TABLE runs (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL DEFAULT 'default',
     agent TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT '',
     protocol TEXT NOT NULL DEFAULT '',
     session_id TEXT NOT NULL DEFAULT '',
     caller TEXT NOT NULL DEFAULT '',

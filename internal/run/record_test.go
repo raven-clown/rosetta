@@ -74,7 +74,7 @@ func TestRecordRuns(t *testing.T) {
 				t.Fatalf("runs = %+v", rec.runs)
 			}
 			got := rec.runs[0]
-			if got.ID != req.RunID || got.Agent != "a" || got.Protocol != "agui" || got.SessionID != "s1" ||
+			if got.ID == "" || got.ID == req.RunID || got.RunID != req.RunID || got.Agent != "a" || got.Protocol != "agui" || got.SessionID != "s1" ||
 				got.Caller != "key:abc" || got.RequestID != "req-1" || got.Status != tt.status || got.Error != tt.errMsg {
 				t.Errorf("run = %+v", got)
 			}

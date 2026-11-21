@@ -7,25 +7,32 @@ import (
 	"fmt"
 )
 
-// SaveRun writes a run record. Saving a run ID twice keeps the first.
+// SaveRun writes a run record. An empty ID is generated. Saving an ID
+// twice fails, since only rosetta makes IDs.
 func (s *Store) SaveRun(ctx context.Context, r Run) error {
-	_, err := s.db.ExecContext(ctx, s.q(`INSERT INTO runs (id, org_id, agent, protocol, session_id, caller, status, error,
+	if r.ID == "" {
+		r.ID = newID()
+	}
+	_, err := s.db.ExecContext(ctx, s.q(`INSERT INTO runs (id, org_id, agent, run_id, protocol, session_id, caller, status, error,
 		started_at, ended_at, input_tokens, output_tokens, reasoning_tokens, request_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`),
-		r.ID, org, r.Agent, r.Protocol, r.SessionID, r.Caller, r.Status, r.Error,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		r.ID, org, r.Agent, r.RunID, r.Protocol, r.SessionID, r.Caller, r.Status, r.Error,
 		nanos(r.Started), nanos(r.Ended), r.InputTokens, r.OutputTokens, r.ReasoningTokens, r.RequestID)
+	if isUnique(err) {
+		return fmt.Errorf("store: saving run: %w", ErrConflict)
+	}
 	if err != nil {
 		return fmt.Errorf("store: saving run: %w", err)
 	}
 	return nil
 }
 
-const runCols = `id, agent, protocol, session_id, caller, status, error, started_at, ended_at, input_tokens, output_tokens, reasoning_tokens, request_id`
+const runCols = `id, agent, run_id, protocol, session_id, caller, status, error, started_at, ended_at, input_tokens, output_tokens, reasoning_tokens, request_id`
 
 func scanRun(sc interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var started, ended int64
-	err := sc.Scan(&r.ID, &r.Agent, &r.Protocol, &r.SessionID, &r.Caller, &r.Status, &r.Error,
+	err := sc.Scan(&r.ID, &r.Agent, &r.RunID, &r.Protocol, &r.SessionID, &r.Caller, &r.Status, &r.Error,
 		&started, &ended, &r.InputTokens, &r.OutputTokens, &r.ReasoningTokens, &r.RequestID)
 	r.Started, r.Ended = fromNanos(started), fromNanos(ended)
 	return r, err
@@ -35,10 +42,10 @@ func scanRun(sc interface{ Scan(...any) error }) (Run, error) {
 func (s *Store) ListRuns(ctx context.Context, f RunFilter, p Page) ([]Run, string, error) {
 	where := []string{"org_id = ?"}
 	args := []any{org}
-	for col, v := range map[string]string{"agent": f.Agent, "protocol": f.Protocol, "status": f.Status} {
-		if v != "" {
-			where = append(where, col+" = ?")
-			args = append(args, v)
+	for _, c := range []struct{ col, v string }{{"agent", f.Agent}, {"protocol", f.Protocol}, {"status", f.Status}} {
+		if c.v != "" {
+			where = append(where, c.col+" = ?")
+			args = append(args, c.v)
 		}
 	}
 	if !f.From.IsZero() {
@@ -73,7 +80,7 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter, p Page) ([]Run, strin
 	return out, cur, nil
 }
 
-// GetRun returns one run.
+// GetRun returns one run by rosetta's ID.
 func (s *Store) GetRun(ctx context.Context, id string) (Run, error) {
 	r, err := scanRun(s.db.QueryRowContext(ctx, s.q(`SELECT `+runCols+` FROM runs WHERE org_id = ? AND id = ?`), org, id))
 	if errors.Is(err, sql.ErrNoRows) {

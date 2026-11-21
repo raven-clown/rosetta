@@ -50,6 +50,7 @@ func Run(t *testing.T, open Opener) {
 		"sessions admin":      sessionsAdmin,
 		"runs":                runs,
 		"runs paging":         runsPaging,
+		"client run ids":      clientRunIDs,
 		"agents":              agents,
 		"keys":                keys,
 		"audit on writes":     auditOnWrites,
@@ -210,7 +211,7 @@ func sessionsAdmin(t *testing.T, open Opener) {
 
 func run(id, agent string, started time.Time) store.Run {
 	return store.Run{
-		ID: id, Agent: agent, Protocol: "mcp", SessionID: "s", Caller: "key:1", Status: store.RunCompleted,
+		ID: id, Agent: agent, RunID: "client-run", Protocol: "mcp", SessionID: "s", Caller: "key:1", Status: store.RunCompleted,
 		Started: started, Ended: started.Add(time.Second), InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3, RequestID: "req",
 	}
 }
@@ -222,10 +223,13 @@ func runs(t *testing.T, open Opener) {
 	r1 := run("r1", "a", base)
 	r2 := run("r2", "b", base.Add(time.Minute))
 	r2.Protocol, r2.Status, r2.Error = "a2a", store.RunFailed, "boom"
-	for _, r := range []store.Run{r1, r2, r1} {
+	for _, r := range []store.Run{r1, r2} {
 		if err := s.SaveRun(ctx, r); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := s.SaveRun(ctx, r1); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("saving an ID twice = %v, want ErrConflict", err)
 	}
 	got, err := s.GetRun(ctx, "r2")
 	if err != nil || !reflect.DeepEqual(got, r2) {
@@ -260,6 +264,22 @@ func runs(t *testing.T, open Opener) {
 				t.Errorf("ids = %v, want %v", ids, tt.want)
 			}
 		})
+	}
+}
+
+// clientRunIDs checks that a run ID chosen by a client never stops another
+// run from being recorded.
+func clientRunIDs(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	for range 2 {
+		if err := s.SaveRun(ctx, store.Run{Agent: "a", RunID: "same", Status: store.RunCompleted, Started: NewClock().Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, _, _ := s.ListRuns(ctx, store.RunFilter{}, store.Page{})
+	if len(list) != 2 || list[0].ID == "" || list[0].ID == list[1].ID || list[0].RunID != "same" {
+		t.Errorf("runs = %+v", list)
 	}
 }
 
