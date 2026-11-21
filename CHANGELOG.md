@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-21
+
 ### Changed
 
 - Built against acp-go-sdk v0.19.0, a2a-go v2.9.0 and jsonschema v6.0.3.
@@ -55,6 +57,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - `/readyz`, which checks transponder and airlock, and Prometheus metrics on `/metrics`.
 - The caller's `traceparent`, `tracestate`, `X-Request-ID` and `X-Project` are forwarded to transponder and airlock.
 
-[Unreleased]: https://github.com/raven-clown/rosetta/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/raven-clown/rosetta/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/raven-clown/rosetta/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/raven-clown/rosetta/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/raven-clown/rosetta/releases/tag/v0.1.0
