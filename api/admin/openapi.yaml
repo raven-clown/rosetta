@@ -1,0 +1,538 @@
+openapi: 3.1.0
+info:
+  title: rosetta admin API
+  version: 0.2.0
+  description: |
+    Manage rosetta's agents and API keys, and read its runs, sessions and
+    audit log. Every call needs `Authorization: Bearer <key>`. Reads take
+    any role. Agent and session writes need `admin` or `member`, and API
+    key writes need `admin`.
+
+    Lists take `cursor` and `limit` (default 50, at most 500) and answer
+    `{"items": [...], "next_cursor": "..."}`, with `next_cursor` absent on
+    the last page. Every resource has an integer `version`. `PATCH` and
+    `DELETE` check it when the request sends `If-Match`, and a mismatch is
+    409 `version_conflict`. Agents and keys from the config file are
+    read-only and marked `managed_by_file`; agents registered in Go are
+    marked `managed_by_code`.
+servers:
+  - url: /admin/v1
+security:
+  - bearer: []
+paths:
+  /status:
+    get:
+      summary: Version, uptime, storage, protocols and upstreams
+      operationId: getStatus
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+        default: { $ref: "#/components/responses/Error" }
+  /openapi.yaml:
+    get:
+      summary: This file
+      operationId: getOpenAPI
+      responses:
+        "200":
+          description: The OpenAPI description
+          content:
+            application/yaml: {}
+  /agents:
+    get:
+      summary: List agents from code, config and the API
+      operationId: listAgents
+      parameters:
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Agents by name
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentList" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: Create an agent
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentSpec" }
+      responses:
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+  /agents/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: One agent
+      operationId: getAgent
+      responses:
+        "200":
+          description: The agent
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Change an agent made through the API
+      description: Fields left out keep their value. The name cannot change.
+      operationId: updateAgent
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentPatch" }
+      responses:
+        "200":
+          description: Changed
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete an agent made through the API
+      operationId: deleteAgent
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204": { description: Deleted }
+        default: { $ref: "#/components/responses/Error" }
+  /api-keys:
+    get:
+      summary: List API keys, never their secret
+      operationId: listAPIKeys
+      parameters:
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Keys by name, revoked ones included
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/APIKeyList" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: Create an API key
+      description: The response holds the key. It is shown once and cannot be read again.
+      operationId: createAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/APIKeySpec" }
+      responses:
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NewAPIKey" }
+        default: { $ref: "#/components/responses/Error" }
+  /api-keys/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      summary: Revoke an API key
+      operationId: revokeAPIKey
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204": { description: Revoked }
+        default: { $ref: "#/components/responses/Error" }
+  /runs:
+    get:
+      summary: Run history, newest first
+      operationId: listRuns
+      parameters:
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: protocol, in: query, schema: { type: string, enum: [mcp, a2a, acp, agui] } }
+        - { name: status, in: query, schema: { type: string, enum: [completed, failed, cancelled] } }
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunList" }
+        default: { $ref: "#/components/responses/Error" }
+  /runs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: One run
+      operationId: getRun
+      responses:
+        "200":
+          description: The run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions:
+    get:
+      summary: Live sessions, most recently used first
+      operationId: listSessions
+      parameters:
+        - { name: agent, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionList" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: One session with its messages
+      operationId: getSession
+      responses:
+        "200":
+          description: The session
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDetail" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete a session and its history
+      operationId: deleteSession
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204": { description: Deleted }
+        default: { $ref: "#/components/responses/Error" }
+  /audit:
+    get:
+      summary: Audit records of every write, newest first
+      operationId: listAudit
+      parameters:
+        - { name: action, in: query, schema: { type: string } }
+        - { name: target, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Audit records
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditList" }
+        default: { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  headers:
+    ETag:
+      description: The resource version, quoted
+      schema: { type: string }
+  parameters:
+    cursor:
+      name: cursor
+      in: query
+      description: The next_cursor of the previous page
+      schema: { type: string }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+    from:
+      name: from
+      in: query
+      description: RFC 3339 time, inclusive
+      schema: { type: string, format: date-time }
+    to:
+      name: to
+      in: query
+      description: RFC 3339 time, exclusive
+      schema: { type: string, format: date-time }
+    ifMatch:
+      name: If-Match
+      in: header
+      description: The version the change is based on, such as "3"
+      schema: { type: string }
+  responses:
+    Error:
+      description: An error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum: [invalid, unauthorized, forbidden, not_found, conflict, version_conflict, read_only, internal]
+            message: { type: string }
+            field: { type: string }
+    Time:
+      type: string
+      format: date-time
+    Status:
+      type: object
+      required: [version, started, uptime_seconds, storage, protocols, upstreams, agents]
+      additionalProperties: false
+      properties:
+        version: { type: string }
+        started: { $ref: "#/components/schemas/Time" }
+        uptime_seconds: { type: integer, minimum: 0 }
+        storage:
+          type: object
+          required: [dialect]
+          additionalProperties: false
+          properties:
+            dialect: { type: string, enum: [sqlite, postgres] }
+        protocols:
+          type: object
+          additionalProperties: { type: boolean }
+        upstreams:
+          description: Each configured upstream and the database, "ok" or the error
+          type: object
+          additionalProperties: { type: string }
+        agents: { type: integer, minimum: 0 }
+    AgentSpec:
+      type: object
+      required: [name, kind]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$" }
+        description: { type: string }
+        kind: { type: string, enum: [llm, a2a, echo] }
+        model: { type: string, description: A model or transponder route name, for kind llm }
+        system_prompt: { type: string }
+        tools:
+          type: array
+          description: Glob patterns of airlock tool names, such as github__*
+          items: { type: string }
+        max_steps: { type: integer, minimum: 0 }
+        url: { type: string, description: The remote agent, for kind a2a }
+        forward_token: { type: boolean }
+    AgentPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        description: { type: string }
+        kind: { type: string, enum: [llm, a2a, echo] }
+        model: { type: string }
+        system_prompt: { type: string }
+        tools: { type: array, items: { type: string } }
+        max_steps: { type: integer, minimum: 0 }
+        url: { type: string }
+        forward_token: { type: boolean }
+    Agent:
+      type: object
+      required: [name, version, source]
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        description: { type: string }
+        kind: { type: string }
+        model: { type: string }
+        system_prompt: { type: string }
+        tools: { type: array, items: { type: string } }
+        max_steps: { type: integer }
+        url: { type: string }
+        forward_token: { type: boolean }
+        version: { type: integer, minimum: 1 }
+        source: { type: string, enum: [code, config, api] }
+        managed_by_file: { type: boolean }
+        managed_by_code: { type: boolean }
+        created: { $ref: "#/components/schemas/Time" }
+        updated: { $ref: "#/components/schemas/Time" }
+        updated_by: { type: string }
+    AgentList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Agent" } }
+        next_cursor: { type: string }
+    APIKeySpec:
+      type: object
+      required: [name, role]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        role: { type: string, enum: [admin, member, viewer] }
+    APIKey:
+      type: object
+      required: [id, name, role, version]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [admin, member, viewer] }
+        prefix: { type: string, description: The first characters of the key, to tell keys apart }
+        version: { type: integer, minimum: 1 }
+        managed_by_file: { type: boolean }
+        created: { $ref: "#/components/schemas/Time" }
+        created_by: { type: string }
+        revoked: { $ref: "#/components/schemas/Time" }
+    NewAPIKey:
+      type: object
+      required: [id, name, role, prefix, version, created, key]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [admin, member, viewer] }
+        prefix: { type: string }
+        version: { type: integer, minimum: 1 }
+        created: { $ref: "#/components/schemas/Time" }
+        created_by: { type: string }
+        key: { type: string, description: The key. Shown once }
+    APIKeyList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/APIKey" } }
+        next_cursor: { type: string }
+    Run:
+      type: object
+      required: [id, agent, status, started, ended, duration_ms, input_tokens, output_tokens, reasoning_tokens]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        run_id: { type: string, description: The protocol's run ID, which the client may choose }
+        agent: { type: string }
+        protocol: { type: string }
+        session_id: { type: string }
+        caller: { type: string }
+        status: { type: string, enum: [completed, failed, cancelled] }
+        error: { type: string }
+        started: { $ref: "#/components/schemas/Time" }
+        ended: { $ref: "#/components/schemas/Time" }
+        duration_ms: { type: integer, minimum: 0 }
+        input_tokens: { type: integer, minimum: 0 }
+        output_tokens: { type: integer, minimum: 0 }
+        reasoning_tokens: { type: integer, minimum: 0 }
+        request_id: { type: string }
+    RunList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Run" } }
+        next_cursor: { type: string }
+    Session:
+      type: object
+      required: [id, agent, session_id, messages, created, updated, expires, version]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        agent: { type: string }
+        session_id: { type: string, description: The ID the client sent }
+        caller: { type: string }
+        messages: { type: integer, minimum: 0 }
+        created: { $ref: "#/components/schemas/Time" }
+        updated: { $ref: "#/components/schemas/Time" }
+        expires: { $ref: "#/components/schemas/Time" }
+        version: { type: integer, minimum: 1 }
+    SessionDetail:
+      type: object
+      required: [id, agent, session_id, messages, created, updated, expires, version, history]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        agent: { type: string }
+        session_id: { type: string }
+        caller: { type: string }
+        messages: { type: integer, minimum: 0 }
+        created: { $ref: "#/components/schemas/Time" }
+        updated: { $ref: "#/components/schemas/Time" }
+        expires: { $ref: "#/components/schemas/Time" }
+        version: { type: integer, minimum: 1 }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/Message" }
+    Message:
+      type: object
+      required: [role, parts]
+      additionalProperties: false
+      properties:
+        role: { type: string, enum: [user, agent, system] }
+        parts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              text: { type: string }
+              data: {}
+    SessionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Session" } }
+        next_cursor: { type: string }
+    AuditRecord:
+      type: object
+      required: [id, time, actor, action, target]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        time: { $ref: "#/components/schemas/Time" }
+        actor: { type: string }
+        action:
+          type: string
+          enum: [agent.create, agent.update, agent.delete, api_key.create, api_key.revoke, session.delete]
+        target: { type: string }
+        details: { type: object }
+    AuditList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AuditRecord" } }
+        next_cursor: { type: string }
