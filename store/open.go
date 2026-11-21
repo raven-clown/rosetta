@@ -78,7 +78,7 @@ func open(dsn string) (*Store, error) {
 		}
 		// The file holds key hashes and conversations, so only its owner may
 		// read it. SQLite gives the -wal and -shm files the same mode.
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+		f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_RDWR, 0o600)
 		if err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}

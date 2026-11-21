@@ -44,7 +44,12 @@ type Options struct {
 	Protocols    Protocols
 	Checks       []Check
 	APIKeys      []APIKey
+	Runs         RunRecorder
 }
+
+// RunRecorder saves a record of every run. *store.Store implements it.
+// With none, runs are not recorded.
+type RunRecorder = run.Recorder
 
 // APIKey is a static key with a role: admin, member or viewer. When
 // Options.APIKeys is empty the server checks no keys.
@@ -78,7 +83,11 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 		panic(err)
 	}
 	m := metrics.New()
-	runner := run.New(opts.Store, run.WithLogger(opts.Logger), run.WithObserver(m))
+	runOpts := []run.Option{run.WithLogger(opts.Logger), run.WithObserver(m)}
+	if opts.Runs != nil {
+		runOpts = append(runOpts, run.WithRecorder(opts.Runs))
+	}
+	runner := run.New(opts.Store, runOpts...)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok")

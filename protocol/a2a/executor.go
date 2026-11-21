@@ -56,7 +56,7 @@ func (x *executor) Execute(ctx context.Context, ec *a2asrv.ExecutorContext) iter
 		m := &mapper{ec: ec}
 		go func() {
 			defer close(events)
-			errc <- x.run.Run(runCtx, x.agent, request(ec), func(e rosetta.Event) error {
+			errc <- x.run.Run(protocol.WithName(runCtx, "a2a"), x.agent, request(ec), func(e rosetta.Event) error {
 				for _, ev := range m.convert(e) {
 					select {
 					case events <- ev:

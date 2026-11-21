@@ -39,7 +39,7 @@ func handler(agent rosetta.Agent, run protocol.Runner) server.ToolHandlerFunc {
 		if call.Params.Meta != nil {
 			r.token = call.Params.Meta.ProgressToken
 		}
-		if err := run.Run(ctx, agent, req, r.send); err != nil {
+		if err := run.Run(protocol.WithName(ctx, "mcp"), agent, req, r.send); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return r.toolResult(), nil

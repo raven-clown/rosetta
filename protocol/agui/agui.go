@@ -66,7 +66,7 @@ func (a *Adapter) Mount(mux *http.ServeMux, agents protocol.Registry, run protoc
 		if err := s.start(); err != nil {
 			return
 		}
-		err := run.Run(r.Context(), agent, req, s.send)
+		err := run.Run(protocol.WithName(r.Context(), "agui"), agent, req, s.send)
 		if r.Context().Err() != nil {
 			return
 		}

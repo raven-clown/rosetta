@@ -40,7 +40,12 @@ func connect(t *testing.T, c *client.Client) {
 
 func inProcess(t *testing.T, reg protocol.Registry) *client.Client {
 	t.Helper()
-	srv := New(Options{}).newServer(t.Context(), reg, protocoltest.NewRunner())
+	return inProcessWith(t, reg, protocoltest.NewRunner())
+}
+
+func inProcessWith(t *testing.T, reg protocol.Registry, run protocol.Runner) *client.Client {
+	t.Helper()
+	srv := New(Options{}).newServer(t.Context(), reg, run)
 	c, err := client.NewInProcessClient(srv)
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +94,15 @@ func TestListTools(t *testing.T) {
 	}
 	if _, ok := schema.Properties["session_id"]; !ok {
 		t.Errorf("schema has no session_id: %+v", schema)
+	}
+}
+
+func TestRunTagged(t *testing.T) {
+	spy := protocoltest.NewSpy()
+	c := inProcessWith(t, protocoltest.StaticRegistry(protocoltest.ScriptedAgent("a")), spy)
+	call(t, c, "a", map[string]any{"message": "hi"}, nil)
+	if got := spy.Names(); len(got) != 1 || got[0] != "mcp" {
+		t.Errorf("protocols = %v", got)
 	}
 }
 

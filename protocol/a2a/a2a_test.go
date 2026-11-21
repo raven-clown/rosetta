@@ -18,13 +18,19 @@ import (
 	"github.com/raven-clown/rosetta"
 	"github.com/raven-clown/rosetta/agents/echo"
 	"github.com/raven-clown/rosetta/internal/golden"
+	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/protocoltest"
 )
 
 func serve(t *testing.T, agents ...rosetta.Agent) *httptest.Server {
 	t.Helper()
+	return serveWith(t, protocoltest.NewRunner(), agents...)
+}
+
+func serveWith(t *testing.T, run protocol.Runner, agents ...rosetta.Agent) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
-	if err := New(Options{}).Mount(mux, protocoltest.StaticRegistry(agents...), protocoltest.NewRunner()); err != nil {
+	if err := New(Options{}).Mount(mux, protocoltest.StaticRegistry(agents...), run); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
@@ -135,6 +141,17 @@ var (
 	uuidPattern = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	timePattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T[^"]+"`)
 )
+
+func TestRunTagged(t *testing.T) {
+	spy := protocoltest.NewSpy()
+	c := dial(t, serveWith(t, spy, protocoltest.ScriptedAgent("a", rosetta.TextDelta{Text: "x"})), "a")
+	if _, err := c.SendMessage(t.Context(), message("ctx-1", a2a.NewTextPart("hi"))); err != nil {
+		t.Fatal(err)
+	}
+	if got := spy.Names(); len(got) != 1 || got[0] != "a2a" {
+		t.Errorf("protocols = %v", got)
+	}
+}
 
 func TestFailedGolden(t *testing.T) {
 	c := dial(t, serve(t, protocoltest.Failing("failing")), "failing")

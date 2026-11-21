@@ -18,6 +18,7 @@ import (
 
 	"github.com/raven-clown/rosetta"
 	"github.com/raven-clown/rosetta/internal/golden"
+	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/protocoltest"
 )
 
@@ -25,9 +26,14 @@ var fixed = time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
 
 func handler(t *testing.T, agents ...rosetta.Agent) http.Handler {
 	t.Helper()
+	return handlerWith(t, protocoltest.NewRunner(), agents...)
+}
+
+func handlerWith(t *testing.T, run protocol.Runner, agents ...rosetta.Agent) http.Handler {
+	t.Helper()
 	mux := http.NewServeMux()
 	a := New(Options{Now: func() time.Time { return fixed }})
-	if err := a.Mount(mux, protocoltest.StaticRegistry(agents...), protocoltest.NewRunner()); err != nil {
+	if err := a.Mount(mux, protocoltest.StaticRegistry(agents...), run); err != nil {
 		t.Fatal(err)
 	}
 	return mux
@@ -68,6 +74,14 @@ func eventTypes(t *testing.T, body string) []string {
 		out = append(out, e.Type)
 	}
 	return out
+}
+
+func TestRunTagged(t *testing.T) {
+	spy := protocoltest.NewSpy()
+	post(t, handlerWith(t, spy, protocoltest.ScriptedAgent("a")), "/agui/a", input(user("u1", "hi")))
+	if got := spy.Names(); len(got) != 1 || got[0] != "agui" {
+		t.Errorf("protocols = %v", got)
+	}
 }
 
 func TestFailedGolden(t *testing.T) {

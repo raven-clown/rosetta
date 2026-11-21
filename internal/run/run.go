@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/raven-clown/rosetta"
+	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/session"
+	"github.com/raven-clown/rosetta/store"
 )
 
 // Runner implements protocol.Runner.
@@ -24,7 +27,20 @@ type Runner struct {
 	logger   *slog.Logger
 	ids      func() string
 	observer Observer
+	recorder Recorder
 }
+
+// Recorder saves the record of every finished run. *store.Store
+// implements it.
+type Recorder interface {
+	SaveRun(ctx context.Context, r store.Run) error
+}
+
+// WithRecorder sets where run records go. Without one, runs are not
+// recorded.
+func WithRecorder(rec Recorder) Option { return func(r *Runner) { r.recorder = rec } }
+
+const recordTimeout = 5 * time.Second
 
 // Observer is told about every finished run and every failed store call,
 // for metrics.
@@ -116,10 +132,13 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 	name := agent.Card().Name
 	start := time.Now()
 	var usage rosetta.Usage
-	defer func() { r.observer.RunDone(name, err, time.Since(start), usage) }()
 	if req.RunID == "" {
 		req.RunID = r.ids()
 	}
+	defer func() {
+		r.observer.RunDone(name, err, time.Since(start), usage)
+		r.record(ctx, name, req, start, usage, err)
+	}()
 	keep := req.SessionID != "" && req.History == nil
 	if keep {
 		h, err := r.store.History(ctx, name, sessionKey(req))
@@ -163,6 +182,32 @@ func (r *Runner) Run(ctx context.Context, agent rosetta.Agent, req *rosetta.Requ
 		r.remember(ctx, name, req, text)
 	}
 	return nil
+}
+
+// record saves the run after its answer has gone out. The save has its own
+// deadline and outlives a cancelled run, so cancelled runs are recorded too.
+func (r *Runner) record(ctx context.Context, agent string, req *rosetta.Request, start time.Time, u rosetta.Usage, err error) {
+	if r.recorder == nil {
+		return
+	}
+	rec := store.Run{
+		ID: req.RunID, Agent: agent, Protocol: protocol.NameFrom(ctx), SessionID: req.SessionID,
+		Caller: req.Caller.ID, Status: store.RunCompleted, Started: start, Ended: time.Now(),
+		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, ReasoningTokens: u.ReasoningTokens,
+		RequestID: req.Caller.RequestID,
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		rec.Status = store.RunCancelled
+	case err != nil:
+		rec.Status, rec.Error = store.RunFailed, err.Error()
+	}
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
+	defer cancel()
+	if err := r.recorder.SaveRun(saveCtx, rec); err != nil {
+		r.logger.Error("saving run record", "agent", agent, "run", req.RunID, "err", err)
+		r.observer.StoreError("run")
+	}
 }
 
 func (r *Runner) remember(ctx context.Context, agent string, req *rosetta.Request, text string) {

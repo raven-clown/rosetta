@@ -39,5 +39,9 @@ func ServeStdio(ctx context.Context, p StdioProtocol, in io.Reader, out io.Write
 	if err != nil {
 		return err
 	}
-	return adapter.ServeStdio(ctx, reg, run.New(opts.Store, run.WithLogger(opts.Logger)), in, out)
+	runOpts := []run.Option{run.WithLogger(opts.Logger)}
+	if opts.Runs != nil {
+		runOpts = append(runOpts, run.WithRecorder(opts.Runs))
+	}
+	return adapter.ServeStdio(ctx, reg, run.New(opts.Store, runOpts...), in, out)
 }

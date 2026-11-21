@@ -132,7 +132,7 @@ func (x *agent) Prompt(ctx context.Context, p acpsdk.PromptRequest) (acpsdk.Prom
 			req.Input = append(req.Input, rosetta.Part{Text: block.Text.Text})
 		}
 	}
-	err := x.run.Run(runCtx, x.agent, req, func(e rosetta.Event) error {
+	err := x.run.Run(protocol.WithName(runCtx, "acp"), x.agent, req, func(e rosetta.Event) error {
 		for _, u := range updates(e) {
 			if err := x.conn.SessionUpdate(runCtx, acpsdk.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
 				return err
