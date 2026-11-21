@@ -5,13 +5,13 @@ go 1.26.0
 toolchain go1.27.4
 
 require (
-	github.com/a2aproject/a2a-go/v2 v2.8.0
+	github.com/a2aproject/a2a-go/v2 v2.9.0
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20261104050642-08eae9dc1354
-	github.com/coder/acp-go-sdk v0.13.5
+	github.com/coder/acp-go-sdk v0.19.0
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/mark3labs/mcp-go v1.6.0
 	github.com/prometheus/client_golang v1.25.0
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sirupsen/logrus v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
 	modernc.org/sqlite v1.62.0

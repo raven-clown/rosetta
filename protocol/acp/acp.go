@@ -95,13 +95,25 @@ func (x *agent) NewSession(context.Context, acpsdk.NewSessionRequest) (acpsdk.Ne
 }
 
 func (x *agent) CloseSession(_ context.Context, p acpsdk.CloseSessionRequest) (acpsdk.CloseSessionResponse, error) {
+	x.drop(p.SessionId)
+	return acpsdk.CloseSessionResponse{}, nil
+}
+
+// DeleteSession cancels the session's prompt and forgets it, as
+// CloseSession does. rosetta advertises neither session/list nor delete,
+// and its history in the store expires after sessions.ttl.
+func (x *agent) DeleteSession(_ context.Context, p acpsdk.DeleteSessionRequest) (acpsdk.DeleteSessionResponse, error) {
+	x.drop(p.SessionId)
+	return acpsdk.DeleteSessionResponse{}, nil
+}
+
+func (x *agent) drop(id acpsdk.SessionId) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	if s, ok := x.sessions[p.SessionId]; ok && s.cancel != nil {
+	if s, ok := x.sessions[id]; ok && s.cancel != nil {
 		s.cancel()
 	}
-	delete(x.sessions, p.SessionId)
-	return acpsdk.CloseSessionResponse{}, nil
+	delete(x.sessions, id)
 }
 
 func (x *agent) Cancel(_ context.Context, p acpsdk.CancelNotification) error {

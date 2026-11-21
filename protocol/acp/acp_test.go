@@ -22,8 +22,9 @@ import (
 )
 
 type recorder struct {
-	mu      sync.Mutex
-	updates []acpsdk.SessionNotification
+	mu       sync.Mutex
+	updates  []acpsdk.SessionNotification
+	elicited int
 }
 
 func (r *recorder) SessionUpdate(_ context.Context, n acpsdk.SessionNotification) error {
@@ -71,6 +72,22 @@ func (r *recorder) ReleaseTerminal(context.Context, acpsdk.ReleaseTerminalReques
 
 func (r *recorder) WaitForTerminalExit(context.Context, acpsdk.WaitForTerminalExitRequest) (acpsdk.WaitForTerminalExitResponse, error) {
 	return acpsdk.WaitForTerminalExitResponse{}, errUnused
+}
+
+// rosetta never asks the client for input, so the elicitation calls fail
+// the test if they ever arrive.
+func (r *recorder) CreateElicitation(context.Context, acpsdk.CreateElicitationRequest) (acpsdk.CreateElicitationResponse, error) {
+	r.mu.Lock()
+	r.elicited++
+	r.mu.Unlock()
+	return acpsdk.CreateElicitationResponse{}, errUnused
+}
+
+func (r *recorder) CompleteElicitation(context.Context, acpsdk.CompleteElicitationNotification) error {
+	r.mu.Lock()
+	r.elicited++
+	r.mu.Unlock()
+	return nil
 }
 
 func start(t *testing.T, agent rosetta.Agent) (*acpsdk.ClientSideConnection, *recorder) {
@@ -219,6 +236,53 @@ func TestCancel(t *testing.T) {
 	}
 	if res.StopReason != acpsdk.StopReasonCancelled {
 		t.Errorf("stop reason = %s", res.StopReason)
+	}
+}
+
+func TestDeleteSession(t *testing.T) {
+	started := make(chan struct{})
+	a := rosetta.Func(rosetta.Card{Name: "slow"}, func(ctx context.Context, _ *rosetta.Request, _ rosetta.Stream) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	conn, rec := start(t, a)
+	id := newSession(t, conn)
+	go func() {
+		<-started
+		_, _ = conn.DeleteSession(t.Context(), acpsdk.DeleteSessionRequest{SessionId: id})
+	}()
+	res, err := prompt(t.Context(), conn, id, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StopReason != acpsdk.StopReasonCancelled {
+		t.Errorf("stop reason = %s, want cancelled", res.StopReason)
+	}
+	if _, err := prompt(t.Context(), conn, id, "again"); err == nil {
+		t.Error("prompt on a deleted session succeeded")
+	}
+	if _, err := conn.DeleteSession(t.Context(), acpsdk.DeleteSessionRequest{SessionId: "unknown"}); err != nil {
+		t.Errorf("deleting an unknown session = %v, want nil", err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.elicited != 0 {
+		t.Errorf("rosetta sent %d elicitation calls", rec.elicited)
+	}
+}
+
+func TestCapabilities(t *testing.T) {
+	conn, _ := start(t, protocoltest.ScriptedAgent("a"))
+	res, err := conn.Initialize(t.Context(), acpsdk.InitializeRequest{ProtocolVersion: acpsdk.ProtocolVersionNumber})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(res.AgentCapabilities)
+	for _, word := range []string{"delete", "list", "elicitation", "loadSession"} {
+		if strings.Contains(string(b), word) {
+			t.Errorf("capabilities %s advertise %s, which rosetta does not serve", b, word)
+		}
 	}
 }
 

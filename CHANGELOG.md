@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- Built against acp-go-sdk v0.19.0, a2a-go v2.9.0 and jsonschema v6.0.3.
+- ACP `session/delete` cancels the session's prompt and forgets the session, as `session/close` does. rosetta still advertises neither, and never sends elicitation requests.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added
