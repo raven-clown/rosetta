@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,8 +27,18 @@ type Config struct {
 	Airlock      Upstream  `yaml:"airlock"`
 	Protocols    Protocols `yaml:"protocols"`
 	Sessions     Sessions  `yaml:"sessions"`
+	Runs         Runs      `yaml:"runs"`
 	Agents       []Agent   `yaml:"agents"`
 }
+
+// Runs configures run records.
+type Runs struct {
+	Retention time.Duration `yaml:"retention"`
+}
+
+// DefaultDSN is where state goes with no storage.dsn: a file in the
+// working directory, as the contract says.
+const DefaultDSN = "sqlite://rosetta.db"
 
 // Storage is where state is kept.
 type Storage struct {
@@ -138,6 +149,12 @@ func (c *Config) defaults() {
 	if c.ListenAddr == "" {
 		c.ListenAddr = ":8080"
 	}
+	if c.Storage.DSN == "" {
+		c.Storage.DSN = DefaultDSN
+	}
+	if c.Runs.Retention == 0 {
+		c.Runs.Retention = 30 * 24 * time.Hour
+	}
 	if c.Sessions.TTL == 0 {
 		c.Sessions.TTL = 24 * time.Hour
 	}
@@ -151,9 +168,14 @@ func (c *Config) defaults() {
 
 var roles = map[string]bool{"admin": true, "member": true, "viewer": true}
 
+var dsnSchemes = []string{"sqlite://", "postgres://", "postgresql://"}
+
 func (c *Config) validate() error {
-	if !c.Auth.Disabled && len(c.Auth.APIKeys) == 0 {
-		return errors.New("auth.api_keys: add at least one key, or set auth.disabled: true")
+	if !slices.ContainsFunc(dsnSchemes, func(s string) bool { return strings.HasPrefix(c.Storage.DSN, s) }) {
+		return errors.New("storage.dsn: must start with sqlite://, postgres:// or postgresql://")
+	}
+	if c.Runs.Retention < 0 {
+		return errors.New("runs.retention: must be positive")
 	}
 	seenKeys, seenNames := map[string]bool{}, map[string]bool{}
 	for i, k := range c.Auth.APIKeys {

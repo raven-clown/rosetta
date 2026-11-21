@@ -26,6 +26,9 @@ protocols:
 sessions:
   ttl: 2h
 
+runs:
+  retention: 48h
+
 agents:
   - name: helper
     description: Answers questions.

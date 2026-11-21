@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -32,6 +33,7 @@ func TestLoadFull(t *testing.T) {
 			AGUI: Protocol{Enabled: ptr(true), Path: "/ui"},
 		},
 		Sessions: Sessions{TTL: 2 * time.Hour},
+		Runs:     Runs{Retention: 48 * time.Hour},
 		Agents: []Agent{
 			{Name: "helper", Description: "Answers questions.", Kind: "llm", Model: "claude-sonnet-5-5",
 				SystemPrompt: "Costs are $5 a month.", Tools: []string{"github__*", "logbook__recall"}, MaxSteps: 4},
@@ -45,12 +47,15 @@ func TestLoadFull(t *testing.T) {
 }
 
 func TestDefaults(t *testing.T) {
-	cfg, err := Parse([]byte("auth: {disabled: true}\n"), nil)
+	cfg, err := Parse(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ListenAddr != ":8080" || cfg.Sessions.TTL != 24*time.Hour {
+	if cfg.ListenAddr != ":8080" || cfg.Sessions.TTL != 24*time.Hour || cfg.Auth.Disabled {
 		t.Errorf("config = %+v", cfg)
+	}
+	if cfg.Storage.DSN != "sqlite://rosetta.db" || cfg.Runs.Retention != 30*24*time.Hour {
+		t.Errorf("storage %q, retention %v", cfg.Storage.DSN, cfg.Runs.Retention)
 	}
 	for _, p := range []Protocol{cfg.Protocols.MCP, cfg.Protocols.A2A, cfg.Protocols.AGUI} {
 		if p.Enabled == nil || !*p.Enabled || p.Path != "" {
@@ -126,7 +131,8 @@ func TestValidate(t *testing.T) {
 		yaml  string
 		field string
 	}{
-		"no keys":            {"listen_addr: ':1'\n", "auth.api_keys"},
+		"bad dsn":            {"storage: {dsn: /var/rosetta.db}\n", "storage.dsn"},
+		"bad retention":      {"runs: {retention: -1h}\n", "runs.retention"},
 		"empty key":          {"auth: {api_keys: [{name: k, key: '', role: admin}]}\n", "auth.api_keys[0].key"},
 		"no key name":        {"auth: {api_keys: [{key: v, role: admin}]}\n", "auth.api_keys[0].name"},
 		"bad role":           {"auth: {api_keys: [{name: k, key: v, role: root}]}\n", "auth.api_keys[0].role"},
@@ -148,6 +154,37 @@ func TestValidate(t *testing.T) {
 			_, err := Parse([]byte(tt.yaml), nil)
 			if err == nil || !strings.Contains(err.Error(), tt.field+":") {
 				t.Errorf("err = %v, want one naming %s", err, tt.field)
+			}
+		})
+	}
+}
+
+func TestValidateAgent(t *testing.T) {
+	cfg, err := Parse([]byte("transponder: {url: http://t}\n"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noUpstream, _ := Parse(nil, nil)
+	tests := map[string]struct {
+		cfg   *Config
+		agent Agent
+		field string
+	}{
+		"ok":          {cfg, Agent{Name: "a", Kind: "llm", Model: "m"}, ""},
+		"bad name":    {cfg, Agent{Name: "A", Kind: "echo"}, "name"},
+		"no model":    {cfg, Agent{Name: "a", Kind: "llm"}, "model"},
+		"no upstream": {noUpstream, Agent{Name: "a", Kind: "llm", Model: "m"}, "transponder.url"},
+		"bad kind":    {cfg, Agent{Name: "a", Kind: "x"}, "kind"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := tt.cfg.ValidateAgent(tt.agent)
+			var fe *FieldError
+			switch {
+			case tt.field == "" && err != nil:
+				t.Errorf("err = %v", err)
+			case tt.field != "" && (!errors.As(err, &fe) || fe.Field != tt.field):
+				t.Errorf("err = %v, want field %s", err, tt.field)
 			}
 		})
 	}

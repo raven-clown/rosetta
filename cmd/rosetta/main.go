@@ -18,6 +18,7 @@ import (
 const usage = `usage:
   rosetta serve [--config rosetta.yaml] [--listen :8080] [--agent echo]...
   rosetta stdio --protocol acp|mcp [--config rosetta.yaml] [--agent name]...
+  rosetta migrate [--config rosetta.yaml] [--dsn sqlite://rosetta.db]
 `
 
 var errUsage = errors.New("usage error")
@@ -39,6 +40,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		err = serve(ctx, args[1:], stdout, stderr)
 	case "stdio":
 		err = stdio(ctx, args[1:], stdin, stdout, stderr)
+	case "migrate":
+		err = migrate(ctx, args[1:], stdout, stderr)
 	default:
 		err = fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 	}

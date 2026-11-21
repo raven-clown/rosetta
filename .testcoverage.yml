@@ -1,3 +1,8 @@
 profile: cover.out
 threshold:
   total: 80
+exclude:
+  paths:
+    # Test helpers: the suite every store runs and the adapters' scripted agents.
+    - store/storetest/
+    - protocol/protocoltest/

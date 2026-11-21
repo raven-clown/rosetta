@@ -78,7 +78,16 @@ func (w *lineWatcher) Write(p []byte) (int, error) {
 	}
 }
 
+// inTemp moves the test into an empty directory, where rosetta.db is made.
+func inTemp(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	return dir
+}
+
 func TestServe(t *testing.T) {
+	inTemp(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	out := &lineWatcher{lines: make(chan string, 16)}
 	done := make(chan int, 1)
@@ -118,6 +127,8 @@ func TestServe(t *testing.T) {
 }
 
 type quietClient struct{ acpsdk.Client }
+
+func (quietClient) SessionUpdate(context.Context, acpsdk.SessionNotification) error { return nil }
 
 func TestStdioACP(t *testing.T) {
 	toAgentR, toAgentW := io.Pipe()
