@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -220,6 +221,37 @@ func TestBootstrapKeyFromEnv(t *testing.T) {
 	}
 	if code, _ := get(t, "http://"+s.addr+"/admin/v1/status", "chosen-admin-key", ""); code != http.StatusOK {
 		t.Errorf("status with the chosen key: %d", code)
+	}
+}
+
+func TestBootstrapRace(t *testing.T) {
+	dir := inTemp(t)
+	cfg, err := config.Parse(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := "sqlite://" + filepath.Join(dir, "race.db")
+	const replicas = 4
+	stores := make([]*store.Store, replicas)
+	for i := range stores {
+		if stores[i], err = store.Open(t.Context(), dsn); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = stores[i].Close() })
+	}
+	errs := make([]error, replicas)
+	var wg sync.WaitGroup
+	for i := range replicas {
+		wg.Go(func() { errs[i] = bootstrap(t.Context(), stores[i], cfg, io.Discard) })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("replica %d: %v", i, err)
+		}
+	}
+	if keys, _ := stores[0].ListKeys(t.Context()); len(keys) != 1 {
+		t.Errorf("keys = %+v, want one", keys)
 	}
 }
 

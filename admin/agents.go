@@ -224,6 +224,11 @@ func (h *Handler) updateAgent(w http.ResponseWriter, r *http.Request) error {
 	if err := a2aNeedsAdmin(r, before.Kind, spec.Kind); err != nil {
 		return err
 	}
+	if version == 0 {
+		// The merge is based on cur, so a write since then must not be
+		// overwritten even when the client sent no If-Match.
+		version = cur.Version
+	}
 	raw, _ = json.Marshal(spec)
 	details, _ := json.Marshal(map[string][]string{"fields": fields})
 	a, err := h.opts.Store.UpdateAgent(r.Context(), store.Agent{Name: name, Spec: raw, UpdatedBy: actor(r)}, version,
@@ -256,12 +261,17 @@ func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if cur, err := h.opts.Store.GetAgent(r.Context(), name); err == nil {
-		var spec config.Agent
-		_ = json.Unmarshal(cur.Spec, &spec)
-		if err := a2aNeedsAdmin(r, spec.Kind); err != nil {
-			return err
-		}
+	cur, err := h.opts.Store.GetAgent(r.Context(), name)
+	if errors.Is(err, store.ErrNotFound) {
+		return notFound("agent " + name)
+	}
+	if err != nil {
+		return err
+	}
+	var spec config.Agent
+	_ = json.Unmarshal(cur.Spec, &spec)
+	if err := a2aNeedsAdmin(r, spec.Kind); err != nil {
+		return err
 	}
 	err = h.opts.Store.DeleteAgent(r.Context(), name, version, store.Audit{Actor: actor(r), Action: "agent.delete", Target: name})
 	if errors.Is(err, store.ErrNotFound) {

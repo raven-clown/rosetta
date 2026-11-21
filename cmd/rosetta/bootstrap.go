@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,12 @@ func bootstrap(ctx context.Context, st *store.Store, cfg *config.Config, stderr 
 	}
 	details, _ := json.Marshal(map[string]string{"name": "bootstrap", "role": "admin"})
 	k := store.Key{ID: "k_bootstrap", Name: "bootstrap", Role: "admin", Prefix: admin.KeyPrefix(key), Hash: auth.Hash(key), CreatedBy: "bootstrap"}
-	if _, err := st.CreateKey(ctx, k, store.Audit{Actor: "bootstrap", Action: "api_key.create", Target: k.ID, Details: details}); err != nil {
+	_, err = st.CreateKey(ctx, k, store.Audit{Actor: "bootstrap", Action: "api_key.create", Target: k.ID, Details: details})
+	if errors.Is(err, store.ErrConflict) {
+		// Another replica starting on the same database made it first.
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("creating the first admin key: %w", err)
 	}
 	if given {

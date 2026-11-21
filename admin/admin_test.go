@@ -242,6 +242,19 @@ func TestAgentErrors(t *testing.T) {
 	}
 }
 
+// TestPatchWithoutIfMatchKeepsOtherFields checks that a PATCH without
+// If-Match is still based on the version it merged into.
+func TestPatchWithoutIfMatchKeepsOtherFields(t *testing.T) {
+	e := newEnv(t)
+	e.want(e.do("member", "POST", "/agents", `{"name":"bot","kind":"llm","model":"m"}`), http.StatusCreated, "", "")
+	e.want(e.do("member", "PATCH", "/agents/bot", `{"model":"fast"}`), http.StatusOK, "", "")
+	e.want(e.do("member", "PATCH", "/agents/bot", `{"system_prompt":"short"}`), http.StatusOK, "", "")
+	m := e.do("viewer", "GET", "/agents/bot", "").json(t)
+	if m["model"] != "fast" || m["system_prompt"] != "short" || m["version"] != float64(3) {
+		t.Errorf("agent = %v", m)
+	}
+}
+
 func TestA2AAgentsNeedAdmin(t *testing.T) {
 	e := newEnv(t)
 	e.want(e.do("admin", "POST", "/agents", `{"name":"remote","kind":"a2a","url":"https://agents.example.com","forward_token":true}`), http.StatusCreated, "", "")
