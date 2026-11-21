@@ -105,4 +105,4 @@ jobs:
       - name: the image serves /healthz
         run: |
           docker run --detach --name rosetta -p 8080:8080 rosetta:ci
-          curl -fsS --retry 30 --retry-connrefused --retry-delay 1 http://localhost:8080/healthz || { docker logs rosetta; exit 1; }
+          curl -fsS --retry 30 --retry-all-errors --retry-delay 1 http://localhost:8080/healthz || { docker logs rosetta; exit 1; }
