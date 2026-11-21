@@ -8,6 +8,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 - Each release attaches `rosetta` binaries for Linux, macOS and Windows on amd64 and arm64 with `checksums.txt`, and pushes a container image to `ghcr.io/raven-clown/rosetta` that runs `rosetta serve` on port 8080.
 
+### Security
+
+- rosetta no longer follows a redirect from the MCP server at `airlock.url` to another scheme, host or port, so that server can't send rosetta's headers and key somewhere else (GO-2026-6911). A request to a URL that redirects that way, even from `http` to `https`, now fails: set `airlock.url` to the address it ends up at.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added
