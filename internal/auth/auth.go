@@ -141,10 +141,13 @@ func (k *Keys) lookup(token string) (Principal, bool) {
 	return found, ok
 }
 
-// Options says where the protocol and admin routes are.
+// Options says where the protocol and admin routes are, and whether auth
+// is off. Open is fixed when the server is built, so revoking the last key
+// never opens the server.
 type Options struct {
 	A2APath   string
 	AdminPath string
+	Open      bool
 }
 
 var public = map[string]bool{"/healthz": true, "/readyz": true, "/metrics": true, cardPath: true}
@@ -179,8 +182,10 @@ const CallerHeader = httpx.CallerHeader
 // forwarded upstream, and replaced by CallerHeader and a Principal in the
 // context.
 //
-// With no keys at all, protocol routes are open and the admin API answers
-// loopback callers only, as an admin.
+// With Options.Open, protocol routes are open and the admin API answers
+// loopback callers that did not come through a proxy, as an admin.
+// Otherwise a request without a valid key is refused, even when the set
+// is empty.
 func Middleware(keys *Keys, opts Options, next http.Handler) http.Handler {
 	if opts.A2APath == "" {
 		opts.A2APath = "/a2a"
@@ -191,7 +196,7 @@ func Middleware(keys *Keys, opts Options, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(CallerHeader)
 		admin := strings.HasPrefix(r.URL.Path, opts.AdminPath)
-		if keys.Len() == 0 {
+		if opts.Open {
 			if !admin {
 				next.ServeHTTP(w, r)
 				return
@@ -224,7 +229,14 @@ func Middleware(keys *Keys, opts Options, next http.Handler) http.Handler {
 	})
 }
 
+// loopback trusts the connection's address, so a request that names a
+// forwarding proxy is not local even when the proxy runs on this machine.
 func loopback(r *http.Request) bool {
+	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Real-Ip"} {
+		if r.Header.Get(h) != "" {
+			return false
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr

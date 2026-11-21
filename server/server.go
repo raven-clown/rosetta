@@ -47,6 +47,8 @@ type Options struct {
 	Runs         RunRecorder
 
 	// Keys replaces APIKeys with a set the caller can update while serving.
+	// With Keys set, auth is on even while the set is empty. With neither
+	// Keys nor APIKeys, auth is off.
 	Keys *Keys
 	// Admin is served under /admin/v1/ when set.
 	Admin http.Handler
@@ -144,6 +146,7 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 		mux.Handle(adminPath, opts.Admin)
 	}
 	keys := opts.Keys
+	open := keys == nil && len(opts.APIKeys) == 0
 	if keys == nil {
 		keys = NewKeys(opts.APIKeys)
 	}
@@ -151,7 +154,7 @@ func New(opts Options, agents ...rosetta.Agent) *Server {
 	if a2aPath == "" {
 		a2aPath = "/a2a"
 	}
-	return &Server{handler: auth.Middleware(keys, auth.Options{A2APath: a2aPath, AdminPath: adminPath}, mux)}
+	return &Server{handler: auth.Middleware(keys, auth.Options{A2APath: a2aPath, AdminPath: adminPath, Open: open}, mux)}
 }
 
 // Handler returns the HTTP handler for every enabled protocol.

@@ -99,7 +99,7 @@ func TestCallerHeader(t *testing.T) {
 			if tt.auth != "" {
 				req.Header.Set("Authorization", tt.auth)
 			}
-			Middleware(NewKeys(tt.keys), Options{}, next).ServeHTTP(httptest.NewRecorder(), req)
+			Middleware(NewKeys(tt.keys), Options{Open: len(tt.keys) == 0}, next).ServeHTTP(httptest.NewRecorder(), req)
 			if got == nil {
 				t.Fatal("request did not reach the handler")
 			}
@@ -173,27 +173,49 @@ func TestStoredKeys(t *testing.T) {
 	}
 }
 
-func TestNoKeys(t *testing.T) {
+func TestEmptySetStaysClosed(t *testing.T) {
+	keys := NewKeys(nil)
+	keys.SetStored([]store.Key{{ID: "k1", Name: "last", Role: "admin", Hash: Hash("last-key")}})
+	h := Middleware(keys, Options{}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	keys.SetStored(nil)
+	for _, path := range []string{"/mcp", "/admin/v1/status"} {
+		if code := serveAs(t, h, "GET", path, "", "127.0.0.1:4000"); code != http.StatusUnauthorized {
+			t.Errorf("%s with no keys left: %d, want 401", path, code)
+		}
+	}
+}
+
+func TestOpen(t *testing.T) {
 	var seen Principal
 	var reached bool
-	h := Middleware(nil, Options{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Middleware(nil, Options{Open: true}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen, reached = FromContext(r.Context())
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	tests := map[string]struct {
-		path, remote string
-		code         int
-		admin        bool
+		path, remote, proxy string
+		code                int
+		admin               bool
 	}{
-		"protocol open":     {"/mcp", "203.0.113.9:4000", http.StatusTeapot, false},
-		"admin loopback v4": {"/admin/v1/status", "127.0.0.1:4000", http.StatusTeapot, true},
-		"admin loopback v6": {"/admin/v1/status", "[::1]:4000", http.StatusTeapot, true},
-		"admin remote":      {"/admin/v1/status", "203.0.113.9:4000", http.StatusForbidden, false},
+		"protocol open":     {"/mcp", "203.0.113.9:4000", "", http.StatusTeapot, false},
+		"admin loopback v4": {"/admin/v1/status", "127.0.0.1:4000", "", http.StatusTeapot, true},
+		"admin loopback v6": {"/admin/v1/status", "[::1]:4000", "", http.StatusTeapot, true},
+		"admin remote":      {"/admin/v1/status", "203.0.113.9:4000", "", http.StatusForbidden, false},
+		"admin via proxy":   {"/admin/v1/status", "127.0.0.1:4000", "203.0.113.9", http.StatusForbidden, false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			seen, reached = Principal{}, false
-			code := serveAs(t, h, "GET", tt.path, "", tt.remote)
+			req := httptest.NewRequestWithContext(t.Context(), "GET", tt.path, nil)
+			req.RemoteAddr = tt.remote
+			if tt.proxy != "" {
+				req.Header.Set("X-Forwarded-For", tt.proxy)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			code := rec.Code
 			if code != tt.code {
 				t.Fatalf("status %d, want %d", code, tt.code)
 			}

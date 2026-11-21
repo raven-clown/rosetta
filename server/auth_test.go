@@ -60,6 +60,14 @@ func TestKeysAdminAndRegistry(t *testing.T) {
 	}
 }
 
+func TestEmptyKeySetIsNotOpen(t *testing.T) {
+	keys := NewKeys(nil)
+	h := New(Options{Keys: keys}, echo.New("echo")).Handler()
+	if code := authed(t, h, http.MethodPost, "/agui/echo", ""); code != http.StatusUnauthorized {
+		t.Errorf("no keys at all: %d, want 401", code)
+	}
+}
+
 func TestRegistryAndAgentsPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
