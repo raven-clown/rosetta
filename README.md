@@ -33,7 +33,11 @@ go install github.com/raven-clown/rosetta/cmd/rosetta@latest   # the rosetta com
 go get github.com/raven-clown/rosetta@latest                  # the library, for agents written in Go
 ```
 
-Prebuilt binaries for Linux, macOS and Windows are planned.
+Each [release](https://github.com/raven-clown/rosetta/releases) has binaries for Linux, macOS and Windows, and an image that keeps its database in `/data`:
+
+```bash
+docker run -p 8080:8080 -v rosetta-data:/data ghcr.io/raven-clown/rosetta:v0.2.0
+```
 
 ## Try it
 
