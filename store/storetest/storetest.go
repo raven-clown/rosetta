@@ -58,6 +58,8 @@ func Run(t *testing.T, open Opener) {
 		"revision":            revision,
 		"prune":               prune,
 		"bad cursor":          badCursor,
+		"concurrent if-match": concurrentIfMatch,
+		"concurrent append":   concurrentAppend,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, open) })
@@ -508,6 +510,71 @@ func prune(t *testing.T, open Opener) {
 	}
 	if n, _ := s.Prune(ctx, clock.Now(), 0); n != 0 {
 		t.Errorf("second prune = %d", n)
+	}
+}
+
+// concurrentIfMatch sends two writes based on the same version at once:
+// exactly one may win, on every dialect.
+func concurrentIfMatch(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	k, err := s.CreateKey(ctx, store.Key{Name: "k", Role: "member", Hash: "hk"}, au("api_key.create", "k"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.CreateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(`{}`)}, au("agent.create", "x"))
+	_ = s.Append(ctx, "a", "anon:s", user("hi"))
+	list, _, _ := s.ListSessions(ctx, store.SessionFilter{}, store.Page{})
+	writes := map[string]func(i int) error{
+		"update agent": func(i int) error {
+			_, err := s.UpdateAgent(ctx, store.Agent{Name: "x", Spec: json.RawMessage(fmt.Sprintf(`{"n":%d}`, i))}, 1, au("agent.update", "x"))
+			return err
+		},
+		"revoke key":     func(int) error { return s.RevokeKey(ctx, k.ID, 1, au("api_key.revoke", k.ID)) },
+		"delete session": func(int) error { return s.DeleteSession(ctx, list[0].ID, list[0].Version, au("session.delete", "s")) },
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			const n = 4
+			errs := make([]error, n)
+			var wg sync.WaitGroup
+			for i := range n {
+				wg.Go(func() { errs[i] = write(i) })
+			}
+			wg.Wait()
+			won := 0
+			for _, err := range errs {
+				switch {
+				case err == nil:
+					won++
+				case !errors.Is(err, store.ErrVersion) && !errors.Is(err, store.ErrNotFound):
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+			if won != 1 {
+				t.Errorf("%d writes won, want 1: %v", won, errs)
+			}
+		})
+	}
+}
+
+// concurrentAppend appends to one session from several goroutines: no
+// turn may be lost.
+func concurrentAppend(t *testing.T, open Opener) {
+	s := open(t, store.Options{})
+	ctx := t.Context()
+	const n = 8
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() { errs[i] = s.Append(ctx, "a", "anon:busy", user(fmt.Sprint(i))) })
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.History(ctx, "a", "anon:busy"); len(got) != n {
+		t.Errorf("history has %d messages, want %d", len(got), n)
 	}
 }
 

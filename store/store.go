@@ -186,6 +186,16 @@ func (s *Store) q(query string) string {
 	return b.String()
 }
 
+// forUpdate locks the selected row until the transaction ends. Postgres
+// needs it, since READ COMMITTED lets two transactions read the same row
+// and both write. SQLite takes its write lock at BEGIN, so it needs none.
+func (s *Store) forUpdate() string {
+	if s.dialect == Postgres {
+		return " FOR UPDATE"
+	}
+	return ""
+}
+
 func (s *Store) exec(ctx context.Context, tx *sql.Tx, query string, args ...any) (sql.Result, error) {
 	return tx.ExecContext(ctx, s.q(query), args...)
 }

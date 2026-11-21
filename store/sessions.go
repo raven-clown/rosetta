@@ -104,10 +104,11 @@ func (s *Store) Append(ctx context.Context, agent, key string, msgs ...rosetta.M
 		}
 		var id string
 		var last int64
-		if err := tx.QueryRowContext(ctx, s.q(`SELECT id FROM sessions WHERE org_id = ? AND agent = ? AND session_key = ?`), org, agent, key).Scan(&id); err != nil {
+		if err := tx.QueryRowContext(ctx, s.q(`SELECT id FROM sessions WHERE org_id = ? AND agent = ? AND session_key = ?`)+s.forUpdate(),
+			org, agent, key).Scan(&id); err != nil {
 			return err
 		}
-		if err := tx.QueryRowContext(ctx, s.q(`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE session_id = ?`), id).Scan(&last); err != nil {
+		if err := tx.QueryRowContext(ctx, s.q(`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE org_id = ? AND session_id = ?`), org, id).Scan(&last); err != nil {
 			return err
 		}
 		for _, m := range msgs {
@@ -117,12 +118,12 @@ func (s *Store) Append(ctx context.Context, agent, key string, msgs ...rosetta.M
 				return err
 			}
 		}
-		if _, err := s.exec(ctx, tx, `DELETE FROM messages WHERE session_id = ? AND seq <= ?`, id, last-int64(s.opts.MaxMessages)); err != nil {
+		if _, err := s.exec(ctx, tx, `DELETE FROM messages WHERE org_id = ? AND session_id = ? AND seq <= ?`, org, id, last-int64(s.opts.MaxMessages)); err != nil {
 			return err
 		}
-		_, err := s.exec(ctx, tx, `UPDATE sessions SET messages = (SELECT COUNT(*) FROM messages WHERE session_id = ?),
-			updated_at = ?, expires_at = ?, version = version + 1 WHERE id = ?`,
-			id, nanos(now), nanos(now.Add(s.opts.SessionTTL)), id)
+		_, err := s.exec(ctx, tx, `UPDATE sessions SET messages = (SELECT COUNT(*) FROM messages WHERE org_id = ? AND session_id = ?),
+			updated_at = ?, expires_at = ?, version = version + 1 WHERE org_id = ? AND id = ?`,
+			org, id, nanos(now), nanos(now.Add(s.opts.SessionTTL)), org, id)
 		return err
 	})
 	if err != nil {
@@ -215,7 +216,7 @@ func (s *Store) DeleteSession(ctx context.Context, id string, version int64, a A
 // ErrVersion when want is above zero and differs from the stored version.
 func (s *Store) checkVersion(ctx context.Context, tx *sql.Tx, query string, want int64, args ...any) error {
 	var got int64
-	err := tx.QueryRowContext(ctx, s.q(query), args...).Scan(&got)
+	err := tx.QueryRowContext(ctx, s.q(query)+s.forUpdate(), args...).Scan(&got)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
