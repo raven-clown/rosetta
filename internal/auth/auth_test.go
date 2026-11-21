@@ -195,23 +195,30 @@ func TestOpen(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	tests := map[string]struct {
-		path, remote, proxy string
-		code                int
-		admin               bool
+		path, remote, proxy, host, origin string
+		code                              int
+		admin                             bool
 	}{
-		"protocol open":     {"/mcp", "203.0.113.9:4000", "", http.StatusTeapot, false},
-		"admin loopback v4": {"/admin/v1/status", "127.0.0.1:4000", "", http.StatusTeapot, true},
-		"admin loopback v6": {"/admin/v1/status", "[::1]:4000", "", http.StatusTeapot, true},
-		"admin remote":      {"/admin/v1/status", "203.0.113.9:4000", "", http.StatusForbidden, false},
-		"admin via proxy":   {"/admin/v1/status", "127.0.0.1:4000", "203.0.113.9", http.StatusForbidden, false},
+		"protocol open":      {"/mcp", "203.0.113.9:4000", "", "example.com", "", http.StatusTeapot, false},
+		"admin loopback v4":  {"/admin/v1/status", "127.0.0.1:4000", "", "127.0.0.1:8080", "", http.StatusTeapot, true},
+		"admin loopback v6":  {"/admin/v1/status", "[::1]:4000", "", "[::1]:8080", "", http.StatusTeapot, true},
+		"admin localhost":    {"/admin/v1/status", "127.0.0.1:4000", "", "localhost:8080", "http://localhost:3000", http.StatusTeapot, true},
+		"admin remote":       {"/admin/v1/status", "203.0.113.9:4000", "", "localhost:8080", "", http.StatusForbidden, false},
+		"admin via proxy":    {"/admin/v1/status", "127.0.0.1:4000", "203.0.113.9", "localhost:8080", "", http.StatusForbidden, false},
+		"dns rebinding":      {"/admin/v1/status", "127.0.0.1:4000", "", "evil.example:8080", "", http.StatusForbidden, false},
+		"foreign page":       {"/admin/v1/agents", "127.0.0.1:4000", "", "localhost:8080", "https://evil.example", http.StatusForbidden, false},
+		"lookalike hostname": {"/admin/v1/status", "127.0.0.1:4000", "", "localhost.evil.example", "", http.StatusForbidden, false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			seen, reached = Principal{}, false
 			req := httptest.NewRequestWithContext(t.Context(), "GET", tt.path, nil)
-			req.RemoteAddr = tt.remote
+			req.RemoteAddr, req.Host = tt.remote, tt.host
 			if tt.proxy != "" {
 				req.Header.Set("X-Forwarded-For", tt.proxy)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
 			}
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -207,8 +208,13 @@ func ifMatch(r *http.Request) (int64, error) {
 
 const maxBody = 1 << 20
 
-// decode reads a JSON object, rejecting unknown fields.
+// decode reads a JSON object, rejecting unknown fields. The body must say
+// it is JSON, so a page cannot send a write as a plain form post, which
+// browsers allow across origins without asking.
 func decode(r *http.Request, v any) error {
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		return &apiError{http.StatusUnsupportedMediaType, "invalid", "send the body as Content-Type: application/json", "Content-Type"}
+	}
 	return decodeFrom(http.MaxBytesReader(nil, r.Body, maxBody), v)
 }
 

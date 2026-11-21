@@ -63,7 +63,7 @@ The same agent answers MCP on `localhost:8080/mcp`, has an A2A card at `localhos
 Add an agent without writing a file:
 
 ```bash
-curl -X POST localhost:8080/admin/v1/agents -H "Authorization: Bearer $KEY" \
+curl -X POST localhost:8080/admin/v1/agents -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"name":"helper","kind":"llm","model":"claude-sonnet-5-5","system_prompt":"Keep answers short."}'
 ```
 

@@ -24,7 +24,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - **Breaking:** a config with auth on no longer needs `auth.api_keys`, since keys can come from the admin API.
 - `ROSETTA_*` environment variables apply without a config file too.
 - A 429 or 402 from transponder fails the run with its error code and `Retry-After`, such as `transponder: 429 Too Many Requests: rate_limited: slow down, retry after 7s`.
-- With `auth.disabled`, the admin API answers only on this machine, and refuses requests that came through a proxy.
+- With `auth.disabled`, the admin API answers only on this machine: it refuses requests that came through a proxy, and requests whose `Host` or `Origin` is not a local name, so a web page cannot reach it. Admin writes need `Content-Type: application/json`.
 
 ## [0.1.0] - 2026-11-05
 

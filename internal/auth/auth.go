@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 
@@ -201,7 +202,7 @@ func Middleware(keys *Keys, opts Options, next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if !loopback(r) {
+			if !loopback(r) || !localName(r) {
 				fail(w, http.StatusForbidden, "forbidden", "auth is off, so the admin API only answers on this machine")
 				return
 			}
@@ -240,6 +241,34 @@ func loopback(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// localName checks the Host and any Origin, so a web page the operator
+// opens cannot reach the open admin API, by DNS rebinding or by sending
+// a request from its own origin.
+func localName(r *http.Request) bool {
+	if !localHost(r.Host) {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	return err == nil && localHost(u.Host)
+}
+
+func localHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()

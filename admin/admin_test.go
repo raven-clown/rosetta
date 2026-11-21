@@ -99,6 +99,9 @@ func (e *env) do(role, method, path, body string, headers ...string) res {
 	e.t.Helper()
 	ctx := auth.WithPrincipal(e.t.Context(), auth.Principal{ID: "key:" + role, Name: role + "-key", Role: role})
 	req := httptest.NewRequestWithContext(ctx, method, Prefix+path, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	for i := 0; i+1 < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])
 	}
@@ -221,6 +224,8 @@ func TestAgentErrors(t *testing.T) {
 		"patch bad kind":   {"member", "PATCH", "/agents/taken", `{"kind":"shell"}`, nil, 400, "invalid", "kind"},
 		"patch unknown":    {"member", "PATCH", "/agents/taken", `{"colour":"red"}`, nil, 400, "invalid", "colour"},
 		"bad if-match":     {"member", "PATCH", "/agents/taken", `{}`, []string{"If-Match", "abc"}, 400, "invalid", "If-Match"},
+		"form post":        {"member", "POST", "/agents", `{"name":"x","kind":"echo"}`, []string{"Content-Type", "text/plain"}, 415, "invalid", "Content-Type"},
+		"json charset":     {"member", "POST", "/agents", `{"name":"cs","kind":"echo"}`, []string{"Content-Type", "application/json; charset=utf-8"}, 201, "", ""},
 		"viewer patch":     {"viewer", "PATCH", "/agents/taken", `{}`, nil, 403, "forbidden", ""},
 		"viewer delete":    {"viewer", "DELETE", "/agents/taken", "", nil, 403, "forbidden", ""},
 		"get fixed":        {"viewer", "GET", "/agents/helper", "", nil, 200, "", ""},
@@ -237,8 +242,8 @@ func TestAgentErrors(t *testing.T) {
 		})
 	}
 	e.t = t
-	if n := len(e.do("viewer", "GET", "/audit", "").json(t)["items"].([]any)); n != 1 {
-		t.Errorf("audit records = %d, want only the one create", n)
+	if n := len(e.do("viewer", "GET", "/audit", "").json(t)["items"].([]any)); n != 2 {
+		t.Errorf("audit records = %d, want only the two creates that worked", n)
 	}
 }
 
