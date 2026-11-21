@@ -20,6 +20,7 @@ import (
 	"github.com/raven-clown/rosetta/internal/golden"
 	"github.com/raven-clown/rosetta/protocol"
 	"github.com/raven-clown/rosetta/protocol/protocoltest"
+	"github.com/raven-clown/rosetta/registry"
 )
 
 func serve(t *testing.T, agents ...rosetta.Agent) *httptest.Server {
@@ -141,6 +142,72 @@ var (
 	uuidPattern = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	timePattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T[^"]+"`)
 )
+
+type sliceAgent []string
+
+func (sliceAgent) Card() rosetta.Card                                          { return rosetta.Card{Name: "s"} }
+func (sliceAgent) Run(context.Context, *rosetta.Request, rosetta.Stream) error { return nil }
+
+func TestSame(t *testing.T) {
+	a := echo.New("a")
+	tests := map[string]struct {
+		x, y rosetta.Agent
+		want bool
+	}{
+		"same value":     {a, a, true},
+		"two values":     {a, echo.New("a"), false},
+		"not comparable": {sliceAgent{"x"}, sliceAgent{"x"}, false},
+		"nil":            {nil, nil, false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := same(tt.x, tt.y); got != tt.want {
+				t.Errorf("same = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTasksSurviveUnrelatedChanges(t *testing.T) {
+	keep := echo.New("echo")
+	reg, err := registry.New(keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	if err := New(Options{}).Mount(mux, reg, protocoltest.NewRunner()); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := dial(t, srv, "echo")
+	res, err := c.SendMessage(t.Context(), message("", a2a.NewTextPart("hello")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := res.(*a2a.Task)
+
+	if err := reg.Set(keep, echo.New("other")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.GetTask(t.Context(), &a2a.GetTaskRequest{ID: task.ID})
+	if err != nil || got.ID != task.ID {
+		t.Errorf("task after an unrelated change = %+v, %v", got, err)
+	}
+
+	replaced := protocoltest.ScriptedAgent("echo", rosetta.TextDelta{Text: "new agent"})
+	if err := reg.Set(replaced); err != nil {
+		t.Fatal(err)
+	}
+	res, err = c.SendMessage(t.Context(), message("", a2a.NewTextPart("hello")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(res)
+	if !strings.Contains(string(b), "new agent") {
+		t.Errorf("replaced agent did not answer: %s", b)
+	}
+}
 
 func TestRunTagged(t *testing.T) {
 	spy := protocoltest.NewSpy()

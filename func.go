@@ -2,9 +2,10 @@ package rosetta
 
 import "context"
 
-// Func turns a function into an Agent.
+// Func turns a function into an Agent. Each call returns a distinct value,
+// so adapters can tell one agent from another with ==.
 func Func(card Card, run func(ctx context.Context, req *Request, out Stream) error) Agent {
-	return funcAgent{card: card, run: run}
+	return &funcAgent{card: card, run: run}
 }
 
 type funcAgent struct {
