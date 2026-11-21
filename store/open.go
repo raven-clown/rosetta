@@ -76,6 +76,13 @@ func open(dsn string) (*Store, error) {
 				return nil, fmt.Errorf("store: %w", err)
 			}
 		}
+		// The file holds key hashes and conversations, so only its owner may
+		// read it. SQLite gives the -wal and -shm files the same mode.
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			return nil, fmt.Errorf("store: %w", err)
+		}
+		_ = f.Close()
 		db, err := sql.Open("sqlite", "file:"+url.PathEscape(path)+"?"+pragmas+"&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 		if err != nil {
 			return nil, fmt.Errorf("store: %w", err)
@@ -85,14 +92,17 @@ func open(dsn string) (*Store, error) {
 	return nil, fmt.Errorf("store: %q is not a sqlite:// or postgres:// URL", redact(dsn))
 }
 
-// redact hides a password in a DSN for error messages.
+// redact hides a password in a DSN for error messages. A DSN that does not
+// parse is not shown at all.
 func redact(dsn string) string {
 	u, err := url.Parse(dsn)
-	if err != nil || u.User == nil {
-		return dsn
+	if err != nil {
+		return "<unparseable dsn>"
 	}
-	if _, ok := u.User.Password(); ok {
-		u.User = url.UserPassword(u.User.Username(), "xxxxx")
+	if u.User != nil {
+		if _, ok := u.User.Password(); ok {
+			u.User = url.UserPassword(u.User.Username(), "xxxxx")
+		}
 	}
 	return u.String()
 }

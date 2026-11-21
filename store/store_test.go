@@ -3,7 +3,9 @@ package store_test
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -44,6 +46,7 @@ func TestOpenErrors(t *testing.T) {
 		"unknown scheme": {"mysql://x", "not a sqlite:// or postgres:// URL"},
 		"no path":        {"sqlite://", "names no file"},
 		"password":       {"redis://u:secret@h/db", "xxxxx"},
+		"unparseable":    {"redis://u:secret@h:bad port/db", "<unparseable dsn>"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -68,6 +71,21 @@ func TestReopenKeepsData(t *testing.T) {
 	}
 	if s2.Dialect() != store.SQLite {
 		t.Errorf("dialect = %s", s2.Dialect())
+	}
+}
+
+func TestFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes")
+	}
+	path := filepath.Join(t.TempDir(), "rosetta.db")
+	openWith(t, "sqlite://"+path, store.Options{})
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("mode = %o, want 600", mode)
 	}
 }
 
