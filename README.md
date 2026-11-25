@@ -87,6 +87,21 @@ ROSETTA_LOCAL_KEY=dev-key rosetta serve --config examples/rosetta.yaml
 
 Callers then send `Authorization: Bearer dev-key`. `/readyz` checks that the database, transponder and airlock answer, and `/metrics` serves Prometheus metrics.
 
+`rosetta check` loads a config and prints each agent, then exits. It does not start the server, open the database, or contact transponder, airlock or a remote agent:
+
+```bash
+ROSETTA_LOCAL_KEY=dev-key rosetta check --config examples/rosetta.yaml
+```
+
+```
+ok  examples/rosetta.yaml
+agent  helper  llm   model=claude-sonnet-5-5 tools=github__*
+agent  travel  a2a   url=https://agents.example.com/travel
+agent  echo    echo
+```
+
+An invalid file prints the error on stderr and exits 1. Values such as `api_key` are not printed.
+
 ## Storage and the admin API
 
 State lives in SQL: session history, a record of every run, and the agents and API keys made through the admin API. SQLite is the default. For a team, or several replicas, point every instance at one Postgres database:

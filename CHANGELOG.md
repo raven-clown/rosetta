@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- `rosetta check --config rosetta.yaml` validates a config file and prints each agent. It does not serve, and it does not contact transponder, airlock or a remote agent.
+
 ## [0.2.1] - 2026-11-21
 
 ### Changed

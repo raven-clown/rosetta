@@ -19,6 +19,7 @@ go run ./cmd/rosetta serve                   # echo agent, rosetta.db here, admi
 go run ./cmd/rosetta serve --config examples/rosetta.yaml   # agents, keys and upstreams from YAML
 go run ./cmd/rosetta stdio --protocol acp    # or mcp; logs go to stderr; add --config and --agent name
 go run ./cmd/rosetta migrate --config examples/rosetta.yaml # migrations only
+go run ./cmd/rosetta check --config examples/rosetta.yaml   # validate the file and print agents; no network, no database
 go test ./protocol/... -update                # rewrite golden files after a deliberate wire change
 ROSETTA_TEST_POSTGRES_DSN=postgres://... go test -tags integration ./store/...   # the store suite on Postgres
 ```
@@ -48,7 +49,7 @@ The spec in `docs/design.md` is approved. Everything in the table is built. The 
 | `internal/run/`, `internal/httpx/`, `internal/golden/` | runner (framing, history, run records), HTTP helpers, golden file test helper |
 | `internal/auth/`, `internal/metrics/` | API keys (static and stored, swapped on reload), Prometheus metrics with the shared request series |
 | `examples/` | sample config |
-| `cmd/rosetta/` | `serve`, `stdio` and `migrate`, the first admin key, and the loop that reloads stored agents and keys when `revision` moves |
+| `cmd/rosetta/` | `serve`, `stdio`, `migrate` and `check`, the first admin key, and the loop that reloads stored agents and keys when `revision` moves |
 | `docs/` | `design.md`, `protocols.md`, `issues.md`, `plans/` (implementation plans per milestone) |
 
 Golden files under `testdata/` keep LF line endings (see `.gitattributes`).

@@ -1,4 +1,4 @@
-// Command rosetta serves agents over MCP, A2A, ACP and AG-UI.
+// Command rosetta serves agents over MCP, A2A, ACP and AG-UI, and checks config files.
 package main
 
 import (
@@ -19,6 +19,7 @@ const usage = `usage:
   rosetta serve [--config rosetta.yaml] [--listen :8080] [--agent echo]...
   rosetta stdio --protocol acp|mcp [--config rosetta.yaml] [--agent name]...
   rosetta migrate [--config rosetta.yaml] [--dsn sqlite://rosetta.db]
+  rosetta check --config rosetta.yaml
 `
 
 var errUsage = errors.New("usage error")
@@ -42,6 +43,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		err = stdio(ctx, args[1:], stdin, stdout, stderr)
 	case "migrate":
 		err = migrate(ctx, args[1:], stdout, stderr)
+	case "check":
+		err = check(args[1:], stdout, stderr)
 	default:
 		err = fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 	}

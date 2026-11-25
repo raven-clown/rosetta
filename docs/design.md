@@ -283,7 +283,7 @@ tools/mcp/               tool source backed by an MCP server (airlock or any oth
 config/                  YAML loading and ROSETTA_* environment overrides
 internal/run/            runner: framing, session history, run records, panics, cancellation, metrics
 internal/httpx/          auth, X-Request-ID, trace header capture and forwarding
-cmd/rosetta/             serve, stdio and migrate commands
+cmd/rosetta/             serve, stdio, migrate and check commands
 examples/                library examples, a sample rosetta.yaml, demo scripts
 ```
 

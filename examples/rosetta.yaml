@@ -1,4 +1,5 @@
 # Run with: rosetta serve --config examples/rosetta.yaml
+# Check with: rosetta check --config examples/rosetta.yaml
 # Every key can be overridden by environment, for example
 # ROSETTA_TRANSPONDER__URL=http://localhost:4000/v1.
 

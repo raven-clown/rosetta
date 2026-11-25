@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -40,6 +41,7 @@ func TestUsageErrors(t *testing.T) {
 		"stdio bad proto": {"stdio", "--protocol", "x"},
 		"bad flag":        {"serve", "--nope"},
 		"bad agent name":  {"serve", "--agent", "Bad Name"},
+		"check bad flag":  {"check", "--nope"},
 	}
 	for name, args := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -165,4 +167,111 @@ func TestStdioACP(t *testing.T) {
 			t.Errorf("stderr line is not JSON: %q", line)
 		}
 	}
+}
+
+func TestCheck(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		path := writeConfig(t, `
+transponder:
+  url: http://127.0.0.1:9/v1
+agents:
+  - name: support
+    kind: llm
+    model: fast
+    tools: ["github__*"]
+  - name: research
+    kind: a2a
+    url: https://agents.example.com/research
+`)
+		var stdout, stderr bytes.Buffer
+		code := run(t.Context(), []string{"check", "--config", path}, strings.NewReader(""), &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("exit %d, stderr %s", code, stderr.String())
+		}
+		want := "ok  " + path + "\n" +
+			"agent  support   llm   model=fast tools=github__*\n" +
+			"agent  research  a2a   url=https://agents.example.com/research\n"
+		if stdout.String() != want {
+			t.Errorf("stdout:\n%s\nwant:\n%s", stdout.String(), want)
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("stderr %q", stderr.String())
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		path := writeConfig(t, "agents: [{name: helper, kind: nope}]\n")
+		var stdout, stderr bytes.Buffer
+		code := run(t.Context(), []string{"check", "--config", path}, strings.NewReader(""), &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("exit %d, stderr %s", code, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("stdout %q", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "agents[0].kind") {
+			t.Errorf("stderr %q", stderr.String())
+		}
+	})
+
+	t.Run("missing config", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := run(t.Context(), []string{"check"}, strings.NewReader(""), &stdout, &stderr)
+		if code != 2 {
+			t.Fatalf("exit %d, stderr %s", code, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("stdout %q", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "--config is required") || !strings.Contains(stderr.String(), "usage:") {
+			t.Errorf("stderr %q", stderr.String())
+		}
+	})
+
+	t.Run("api key is not printed", func(t *testing.T) {
+		const secret = "check-secret-value"
+		path := writeConfig(t, fmt.Sprintf(`
+auth:
+  api_keys:
+    - { name: local, key: %q, role: admin }
+transponder:
+  url: http://127.0.0.1:9/v1
+  api_key: %q
+airlock:
+  url: http://127.0.0.1:9/mcp
+  api_key: %q
+agents:
+  - name: support
+    kind: llm
+    model: fast
+    system_prompt: %q
+    tools: ["github__*", "slack__*"]
+    max_steps: 4
+  - name: research
+    kind: a2a
+    url: https://agents.example.com/research
+    forward_token: true
+  - name: plain
+    kind: llm
+    model: fast
+  - name: echo
+    kind: echo
+`, secret, secret, secret, secret))
+		var stdout, stderr bytes.Buffer
+		code := run(t.Context(), []string{"check", "--config", path}, strings.NewReader(""), &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("exit %d, stderr %s", code, stderr.String())
+		}
+		want := "ok  " + path + "\n" +
+			"agent  support   llm   model=fast tools=github__*,slack__*\n" +
+			"agent  research  a2a   url=https://agents.example.com/research\n" +
+			"agent  plain     llm   model=fast\n" +
+			"agent  echo      echo\n"
+		if stdout.String() != want {
+			t.Errorf("stdout:\n%s\nwant:\n%s", stdout.String(), want)
+		}
+		if strings.Contains(stdout.String()+stderr.String(), secret) {
+			t.Errorf("secret leaked:\nstdout %s\nstderr %s", stdout.String(), stderr.String())
+		}
+	})
 }
